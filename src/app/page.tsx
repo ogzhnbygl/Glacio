@@ -5,13 +5,28 @@ import { Thermometer, Activity, Clock, Server, AlertTriangle, ShieldCheck } from
 import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import Link from 'next/link';
+import { getServerSession } from "next-auth";
+import { authOptions } from "./api/auth/[...nextauth]/route";
+import { redirect } from "next/navigation";
+import Header from "@/components/Header";
+import ClaimDeviceModal from "@/components/ClaimDeviceModal";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
+  const session = await getServerSession(authOptions);
+  
+  if (!session) {
+    redirect("/login");
+  }
+
+  const userId = (session.user as any).id;
+
   await dbConnect();
   
-  const devices = await Device.find({}).sort({ createdAt: -1 }).lean();
+  const devices = await Device.find({ 
+    $or: [{ ownerId: userId }, { sharedWith: userId }] 
+  }).sort({ createdAt: -1 }).lean();
   
   // Fetch latest telemetry for each device
   const devicesWithTemp = await Promise.all(devices.map(async (device: any) => {
@@ -34,6 +49,8 @@ export default async function Home() {
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-cyan-500/30">
       <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))] opacity-5 pointer-events-none"></div>
       
+      <Header user={session.user} />
+
       <main className="max-w-7xl mx-auto px-6 py-12 relative z-10">
         <header className="mb-16 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
@@ -48,22 +65,8 @@ export default async function Home() {
               Laboratuvar ve dolap sıcaklıklarının gerçek zamanlı izleme ve yönetim platformu.
             </p>
           </div>
-          
           <div className="flex gap-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 min-w-32">
-              <div className="text-slate-400 text-sm mb-1 flex items-center gap-2">
-                <Server className="w-4 h-4" /> Toplam
-              </div>
-              <div className="text-2xl font-semibold text-white">{devices.length} Cihaz</div>
-            </div>
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 min-w-32">
-              <div className="text-slate-400 text-sm mb-1 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" /> Aktif
-              </div>
-              <div className="text-2xl font-semibold text-white">
-                {devicesWithTemp.filter(d => d.isActuallyOnline).length} Cihaz
-              </div>
-            </div>
+            <ClaimDeviceModal />
           </div>
         </header>
 
@@ -140,7 +143,7 @@ export default async function Home() {
               </div>
               <h3 className="text-xl font-medium text-white mb-2">Henüz cihaz bulunmuyor</h3>
               <p className="text-slate-400 max-w-sm mx-auto">
-                Cihazların telemetri verilerini göndermeye başlamasını bekliyoruz. Veri geldiğinde burada otomatik olarak görünecektir.
+                Hesabınıza tanımlı bir cihaz yok. Yukarıdaki "Yeni Cihaz Ekle" butonuna tıklayarak kutudan çıkan şifre ile cihazınızı ekleyebilirsiniz.
               </p>
             </div>
           )}

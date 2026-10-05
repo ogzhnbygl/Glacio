@@ -7,6 +7,10 @@ export interface IDevice extends mongoose.Document {
   isOnline: boolean;
   minTemp: number;
   maxTemp: number;
+  ownerId?: mongoose.Types.ObjectId;
+  sharedWith: mongoose.Types.ObjectId[];
+  claimSecret: string;
+  isClaimed: boolean;
   createdAt: Date;
 }
 
@@ -17,6 +21,10 @@ const DeviceSchema = new mongoose.Schema<IDevice>({
   isOnline: { type: Boolean, default: true },
   minTemp: { type: Number, required: true, default: 2.0 },
   maxTemp: { type: Number, required: true, default: 8.0 },
+  ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  sharedWith: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  claimSecret: { type: String, required: true },
+  isClaimed: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 
