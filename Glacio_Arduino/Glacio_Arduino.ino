@@ -8,10 +8,10 @@
 #include <ArduinoOTA.h>
 
 // --- Varsayılan Ayarlar (Kullanıcı arayüzünden güncellenebilir) ---
-char device_id[32]  = "glacio-node-01";
-char api_key[64]    = "glacio-super-secret-key-2026";
+char device_id[64]  = "glacio-node-01";
+char api_key[128]   = "glacio-super-secret-key-2026";
 char api_url[128]   = "https://glacio.vercel.app/api/telemetry";
-char temp_offset[8] = "0.0";
+char temp_offset[16] = "0.0";
 
 bool shouldSaveConfig = false;
 
@@ -146,10 +146,10 @@ void setup() {
   wm.setSaveConfigCallback(saveConfigCallback);
 
   // Web portalına özel giriş kutuları ekle
-  WiFiManagerParameter custom_device_id("device_id", "Cihaz ID (Örn: glacio-01)", device_id, 32);
-  WiFiManagerParameter custom_api_key("api_key", "API Secret Key", api_key, 64);
+  WiFiManagerParameter custom_device_id("device_id", "Cihaz ID (Örn: glacio-01)", device_id, 64);
+  WiFiManagerParameter custom_api_key("api_key", "API Secret Key", api_key, 128);
   WiFiManagerParameter custom_api_url("api_url", "Vercel API URL", api_url, 128);
-  WiFiManagerParameter custom_temp_offset("temp_offset", "Kalibrasyon Ofseti (°C)", temp_offset, 8);
+  WiFiManagerParameter custom_temp_offset("temp_offset", "Kalibrasyon Ofseti (°C)", temp_offset, 16);
 
   wm.addParameter(&custom_device_id);
   wm.addParameter(&custom_api_key);
@@ -172,6 +172,11 @@ void setup() {
     strcpy(api_key, custom_api_key.getValue());
     strcpy(api_url, custom_api_url.getValue());
     strcpy(temp_offset, custom_temp_offset.getValue());
+    
+    Serial.println("\n[AYARLAR] Portal'dan gelen yeni degerler:");
+    Serial.print("Device ID: "); Serial.println(device_id);
+    Serial.print("API Key: "); Serial.println(api_key);
+    
     saveConfig();
   }
 
