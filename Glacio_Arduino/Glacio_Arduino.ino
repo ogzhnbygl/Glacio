@@ -108,6 +108,7 @@ void sendTelemetryData(float temp) {
 
   HTTPClient http;
   if (http.begin(client, api_url)) {
+    http.setTimeout(15000); // Vercel cold-start gecikmelerini tolere etmek icin 15 saniye bekle
     http.addHeader("Content-Type", "application/json");
     http.addHeader("x-api-key", api_key);
 

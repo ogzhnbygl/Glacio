@@ -11,6 +11,7 @@ export interface IDevice extends mongoose.Document {
   sharedWith: mongoose.Types.ObjectId[];
   claimSecret: string;
   isClaimed: boolean;
+  cabinetType: string;
   createdAt: Date;
 }
 
@@ -25,6 +26,11 @@ const DeviceSchema = new mongoose.Schema<IDevice>({
   sharedWith: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   claimSecret: { type: String, required: true },
   isClaimed: { type: Boolean, default: false },
+  cabinetType: { 
+    type: String, 
+    enum: ['single_plus4', 'single_minus20', 'single_minus80', 'dual_plus4_minus20', 'unconfigured'],
+    default: 'unconfigured'
+  },
   createdAt: { type: Date, default: Date.now }
 });
 
