@@ -2,8 +2,9 @@ import dbConnect from "@/lib/mongodb";
 import Device from "@/models/Device";
 import TelemetryLog from "@/models/TelemetryLog";
 import TemperatureChart from "@/components/TemperatureChart";
-import { ArrowLeft, Settings, Thermometer, Clock, Activity, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Thermometer, Clock, Activity, AlertTriangle } from "lucide-react";
 import Link from "next/link";
+import DeviceSettingsModal from "@/components/DeviceSettingsModal";
 import { formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
 import { notFound } from "next/navigation";
@@ -57,10 +58,7 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
             <p className="text-slate-400 font-mono text-sm">ID: {device.deviceId}</p>
           </div>
           
-          <button className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-lg text-sm transition-colors text-white cursor-not-allowed opacity-50" title="Faz 3'te Eklenecek">
-            <Settings className="w-4 h-4" />
-            <span>Cihaz Ayarları</span>
-          </button>
+          <DeviceSettingsModal device={JSON.parse(JSON.stringify(device))} />
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
@@ -116,6 +114,19 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
               Cihaz bu sıcaklık aralıklarının dışına çıkarsa uyarı sistemleri (Telegram) devreye girer.
             </p>
             
+            <div className="flex items-center gap-4 max-w-md mb-6">
+              <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 text-center">
+                <div className="text-slate-500 text-[10px] uppercase tracking-wider font-semibold mb-1">Dolap Tipi</div>
+                <div className="text-sm font-medium text-slate-300">
+                  {device.cabinetType === 'single_plus4' && '+4°C (Tek Sensör)'}
+                  {device.cabinetType === 'single_minus20' && '-20°C (Tek Sensör)'}
+                  {device.cabinetType === 'single_minus80' && '-80°C (Tek Sensör)'}
+                  {device.cabinetType === 'dual_plus4_minus20' && '+4°C ve -20°C (Çift)'}
+                  {(!device.cabinetType || device.cabinetType === 'unconfigured') && 'Belirlenmedi'}
+                </div>
+              </div>
+            </div>
+
             <div className="flex items-center gap-4 max-w-md">
               <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 text-center">
                 <div className="text-slate-500 text-xs mb-1">Minimum</div>
