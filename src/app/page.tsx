@@ -11,6 +11,8 @@ import { redirect } from "next/navigation";
 import Header from "@/components/Header";
 import ClaimDeviceModal from "@/components/ClaimDeviceModal";
 
+import User from "@/models/User";
+
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
@@ -24,6 +26,10 @@ export default async function Home() {
 
   await dbConnect();
   
+  // Fetch user to get their API key
+  const currentUser = await User.findById(userId).lean();
+  const apiKey = currentUser?.apiKey || "";
+  
   const devices = await Device.find({ 
     $or: [{ ownerId: userId }, { sharedWith: userId }] 
   }).sort({ createdAt: -1 }).lean();
@@ -34,8 +40,10 @@ export default async function Home() {
       .sort({ timestamp: -1 })
       .lean();
       
-    // Determine if device is considered online (last seen within 5 minutes)
-    const isOnline = new Date().getTime() - new Date(device.lastSeen).getTime() < 5 * 60 * 1000;
+    // Determine if device is considered online (last seen within 5 minutes AND has at least one log)
+    const isOnline = latestLog 
+      ? new Date().getTime() - new Date(device.lastSeen).getTime() < 5 * 60 * 1000 
+      : false;
     
     return {
       ...device,
@@ -52,7 +60,7 @@ export default async function Home() {
       <Header user={session.user} />
 
       <main className="max-w-7xl mx-auto px-6 py-12 relative z-10">
-        <header className="mb-16 flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 text-sm font-medium mb-4 border border-cyan-500/20">
               <Activity className="w-4 h-4" />
@@ -61,11 +69,23 @@ export default async function Home() {
             <h1 className="text-4xl md:text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400 mb-3">
               Glacio <span className="font-light">Panel</span>
             </h1>
-            <p className="text-slate-400 max-w-xl text-lg">
+            <p className="text-slate-400 max-w-xl text-lg mb-4">
               Laboratuvar ve dolap sıcaklıklarının gerçek zamanlı izleme ve yönetim platformu.
             </p>
+            
+            {/* API Key Display Box */}
+            <div className="mt-6 bg-slate-900/50 border border-slate-800 rounded-xl p-4 inline-block">
+              <p className="text-sm text-slate-400 mb-2 font-medium">Size Özel Cihaz Kurulum Anahtarı (API Key):</p>
+              <div className="flex items-center gap-3">
+                <code className="px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-cyan-400 text-sm select-all">
+                  {apiKey}
+                </code>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">Bu anahtarı cihazı kurarken "API Secret Key" bölümüne yapıştırın.</p>
+            </div>
           </div>
-          <div className="flex gap-4">
+          
+          <div className="flex gap-4 mb-4">
             <ClaimDeviceModal />
           </div>
         </header>

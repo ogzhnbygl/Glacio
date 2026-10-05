@@ -29,7 +29,7 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
     .lean();
     
   const currentTemp = logs.length > 0 ? logs[0].temperature : null;
-  const isOnline = new Date().getTime() - new Date(device.lastSeen).getTime() < 5 * 60 * 1000;
+  const isOnline = logs.length > 0 ? new Date().getTime() - new Date(device.lastSeen).getTime() < 5 * 60 * 1000 : false;
   const isDanger = currentTemp !== null && (currentTemp < device.minTemp || currentTemp > device.maxTemp);
 
   return (
