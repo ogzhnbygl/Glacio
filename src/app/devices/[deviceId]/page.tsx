@@ -10,11 +10,11 @@ import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function DeviceDetail({ params }: { params: { deviceId: string } }) {
+export default async function DeviceDetail({ params }: { params: Promise<{ deviceId: string }> }) {
   await dbConnect();
   
-  // Unwrap params using standard Next.js 13+ approach (sometimes requires await in Next.js 15, but this is Next 14/15 compatible in App Router for Server Components)
-  const deviceId = params.deviceId;
+  // Next.js 15 requires params to be awaited
+  const { deviceId } = await params;
   
   const device = await Device.findOne({ deviceId }).lean();
   
