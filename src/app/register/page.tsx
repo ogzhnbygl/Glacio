@@ -1,12 +1,12 @@
 "use client";
 
-import { signIn } from "next-auth/react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, Mail, ArrowRight } from "lucide-react";
+import { Lock, Mail, User as UserIcon, ArrowRight, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
-export default function LoginPage() {
+export default function RegisterPage() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -18,18 +18,24 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const result = await signIn("credentials", {
-      redirect: false,
-      email,
-      password,
-    });
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password }),
+      });
 
-    if (result?.error) {
-      setError(result.error);
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Kayıt işlemi başarısız.");
+      }
+
+      // Automatically redirect to login page after successful registration
+      router.push("/login?registered=true");
+    } catch (err: any) {
+      setError(err.message);
       setLoading(false);
-    } else {
-      router.push("/");
-      router.refresh();
     }
   };
 
@@ -38,9 +44,14 @@ export default function LoginPage() {
       <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))] opacity-5 pointer-events-none"></div>
       
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 relative z-10 shadow-2xl shadow-cyan-900/10">
-        <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Glacio'ya Giriş</h1>
-          <p className="text-slate-400">IoT Cihaz Yönetim Paneli</p>
+        <Link href="/login" className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors mb-6 text-sm">
+          <ArrowLeft className="w-4 h-4" />
+          <span>Girişe Dön</span>
+        </Link>
+        
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Hesap Oluştur</h1>
+          <p className="text-slate-400">Laboratuvarınız için Glacio'ya katılın.</p>
         </div>
 
         {error && (
@@ -49,7 +60,24 @@ export default function LoginPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-slate-400 mb-2">Ad Soyad (Laboratuvar Adı)</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <UserIcon className="h-5 w-5 text-slate-500" />
+              </div>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="block w-full pl-11 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all"
+                placeholder="Örn: Dr. Ayşe Yılmaz"
+                required
+              />
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-slate-400 mb-2">Email Adresi</label>
             <div className="relative">
@@ -61,7 +89,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="block w-full pl-11 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all"
-                placeholder="admin@glacio.com"
+                placeholder="lab@universite.edu"
                 required
               />
             </div>
@@ -78,8 +106,9 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="block w-full pl-11 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all"
-                placeholder="••••••••"
+                placeholder="En az 6 karakter"
                 required
+                minLength={6}
               />
             </div>
           </div>
@@ -87,21 +116,12 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-2"
           >
-            {loading ? "Giriş Yapılıyor..." : "Giriş Yap"}
+            {loading ? "Kaydediliyor..." : "Kayıt Ol"}
             {!loading && <ArrowRight className="w-4 h-4" />}
           </button>
         </form>
-
-        <div className="mt-8 text-center border-t border-slate-800 pt-6">
-          <p className="text-slate-400 text-sm">
-            Henüz hesabınız yok mu?{" "}
-            <Link href="/register" className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors">
-              Hemen Kayıt Olun
-            </Link>
-          </p>
-        </div>
       </div>
     </div>
   );
