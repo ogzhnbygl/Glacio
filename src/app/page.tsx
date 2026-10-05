@@ -4,6 +4,7 @@ import TelemetryLog from "@/models/TelemetryLog";
 import { Thermometer, Activity, Clock, Server, AlertTriangle, ShieldCheck } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
+import Link from 'next/link';
 
 export const dynamic = "force-dynamic";
 
@@ -72,7 +73,7 @@ export default async function Home() {
             const isDanger = hasTemp && (device.currentTemp < device.minTemp || device.currentTemp > device.maxTemp);
             
             return (
-              <div key={device._id} className="group relative bg-slate-900 border border-slate-800 rounded-2xl p-6 transition-all hover:bg-slate-800/80 hover:border-slate-700 hover:shadow-xl hover:shadow-cyan-900/10 overflow-hidden">
+              <Link href={`/devices/${device.deviceId}`} key={device._id} className="group relative bg-slate-900 border border-slate-800 rounded-2xl p-6 transition-all hover:bg-slate-800/80 hover:border-slate-700 hover:shadow-xl hover:shadow-cyan-900/10 overflow-hidden block">
                 {/* Background gradient effect based on state */}
                 <div className={`absolute top-0 right-0 w-32 h-32 -mr-10 -mt-10 rounded-full blur-3xl opacity-20 transition-colors ${
                   !device.isActuallyOnline ? 'bg-slate-500' :
@@ -128,7 +129,7 @@ export default async function Home() {
                     </div>
                   </div>
                 </div>
-              </div>
+              </Link>
             );
           })}
           

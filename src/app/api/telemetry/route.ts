@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
           isOnline: true 
         },
         $setOnInsert: {
-          name: `Yeni Cihaz (${deviceId})`,
+          name: deviceId,
           minTemp: 2.0,
           maxTemp: 8.0,
           createdAt: new Date()

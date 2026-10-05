@@ -1,8 +1,19 @@
 #include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 // Wi-Fi Bilgileri
 const char* ssid     = "OGUZHAN-BAYGUL";
 const char* password = "05E241k/";
+
+// Glacio API Bilgileri
+const char* api_url  = "https://glacio.vercel.app/api/telemetry";
+const char* api_key  = "glacio-super-secret-key-2026";
+const char* device_id = "glacio-node-01";
+
+// Veri Gönderim Süresi
+unsigned long lastPostTime = 0;
+const unsigned long POST_INTERVAL = 30000; // Şimdilik test için 30 saniyede bir gönder
 
 // Pin Tanımları
 const int ntcPin = A0;
@@ -77,6 +88,49 @@ float readTemperature() {
   return finalTemp;
 }
 
+void sendTelemetryData(float temp) {
+  WiFiClientSecure client;
+  client.setInsecure(); // HTTPS için sertifika doğrulamasını atla (NodeMCU için en kolayı)
+  
+  HTTPClient http;
+  
+  Serial.print("[HTTP] Baglaniliyor: ");
+  Serial.println(api_url);
+  
+  if (http.begin(client, api_url)) {
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("x-api-key", api_key);
+    
+    // JSON oluştur: {"deviceId": "glacio-node-01", "temperature": 4.5}
+    String payload = "{\"deviceId\":\"" + String(device_id) + "\",\"temperature\":" + String(temp, 2) + "}";
+    
+    Serial.print("[HTTP] POST ediliyor: ");
+    Serial.println(payload);
+    
+    int httpCode = http.POST(payload);
+    
+    if (httpCode > 0) {
+      Serial.printf("[HTTP] POST... kod: %d\n", httpCode);
+      if (httpCode == HTTP_CODE_OK) {
+        String response = http.getString();
+        Serial.println("[HTTP] Yanit:");
+        Serial.println(response);
+        
+        // Başarılı gönderimde bildirim LED'ini hızlıca yak-söndür (LOW yanar, HIGH söner)
+        digitalWrite(ledPin, HIGH); // Söndür
+        delay(100);
+        digitalWrite(ledPin, LOW);  // Tekrar yak
+      }
+    } else {
+      Serial.printf("[HTTP] POST basarisiz, hata: %s\n", http.errorToString(httpCode).c_str());
+    }
+    
+    http.end();
+  } else {
+    Serial.println("[HTTP] Baglanti kurulamadi!");
+  }
+}
+
 void loop() {
   if (WiFi.status() != WL_CONNECTED) {
     digitalWrite(ledPin, HIGH);
@@ -88,13 +142,23 @@ void loop() {
 
   float temperatureC = readTemperature();
 
-  if (temperatureC != -999.0) {
-    Serial.print("Sicaklik: ");
-    Serial.print(temperatureC, 1);
-    Serial.println(" °C");
-  } else {
-    Serial.println("Sensor Hatasi!");
+  // Sürekli ekrana yazmak yerine millis() ile belirli aralıklarla gönder (Örn: 30sn)
+  if (millis() - lastPostTime >= POST_INTERVAL) {
+    lastPostTime = millis();
+    
+    if (temperatureC != -999.0) {
+      Serial.print("\n--- Yeni Olcum ---");
+      Serial.print("\nGuncel Sicaklik: ");
+      Serial.print(temperatureC, 1);
+      Serial.println(" °C");
+      
+      // Vercel API'ye Gönder
+      sendTelemetryData(temperatureC);
+    } else {
+      Serial.println("\nSensor Hatasi! Veri gonderilemedi.");
+    }
   }
 
-  delay(2000);
+  // WDT (Watchdog) reset önlemek için çok ufak bir bekleme
+  delay(10);
 }
