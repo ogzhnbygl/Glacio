@@ -15,7 +15,10 @@ export default function InviteUserModal({ devices, currentUserId }: { devices: a
   const router = useRouter();
 
   // Only devices owned by the current user
-  const ownedDevices = devices.filter((d: any) => d.ownerId === currentUserId);
+  const ownedDevices = devices.filter((d: any) => {
+    const ownerIdStr = d.ownerId?._id ? d.ownerId._id.toString() : d.ownerId?.toString();
+    return ownerIdStr === currentUserId;
+  });
 
   // Extract all existing shares
   const existingShares: { targetUserId: string; targetEmail: string; deviceId: string; deviceName: string }[] = [];
