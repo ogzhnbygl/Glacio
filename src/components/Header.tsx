@@ -2,7 +2,7 @@
 
 import { signOut } from "next-auth/react";
 import Link from "next/link";
-import { LogOut, ShieldCheck } from "lucide-react";
+import { LogOut, ShieldCheck, Snowflake } from "lucide-react";
 
 import ApiKeyModal from "./ApiKeyModal";
 import InviteUserModal from "./InviteUserModal";
@@ -14,11 +14,12 @@ export default function Header({ user, apiKey, devices = [] }: { user: any; apiK
   return (
     <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-md sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <Link href="/" className="text-xl font-bold text-white flex items-center gap-2">
-          <div className="w-8 h-8 bg-cyan-600 rounded-lg flex items-center justify-center text-white font-bold">
-            G
+        <Link href="/" className="text-xl font-bold text-white flex items-center gap-2.5 group">
+          <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:shadow-cyan-500/40 transition-all duration-300">
+            <div className="absolute inset-0 bg-white/20 rounded-xl blur-[1px] mix-blend-overlay"></div>
+            <Snowflake className="w-5 h-5 text-white drop-shadow-md group-hover:rotate-90 transition-transform duration-700" />
           </div>
-          Glacio
+          <span className="tracking-tight">Glacio</span>
         </Link>
 
         <div className="flex items-center gap-4 sm:gap-6">

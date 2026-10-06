@@ -3,7 +3,7 @@
 import { signIn } from "next-auth/react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, Mail, ArrowRight } from "lucide-react";
+import { Lock, Mail, ArrowRight, Snowflake } from "lucide-react";
 import Link from "next/link";
 
 export default function LoginPage() {
@@ -38,7 +38,11 @@ export default function LoginPage() {
       <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))] opacity-5 pointer-events-none"></div>
       
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 relative z-10 shadow-2xl shadow-cyan-900/10">
-        <div className="text-center mb-10">
+        <div className="flex flex-col items-center text-center mb-10">
+          <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 mb-6 group">
+            <div className="absolute inset-0 bg-white/20 rounded-2xl blur-[1px] mix-blend-overlay"></div>
+            <Snowflake className="w-8 h-8 text-white drop-shadow-md group-hover:rotate-90 transition-transform duration-700" />
+          </div>
           <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Glacio'ya Giriş</h1>
           <p className="text-slate-400">IoT Cihaz Yönetim Paneli</p>
         </div>
