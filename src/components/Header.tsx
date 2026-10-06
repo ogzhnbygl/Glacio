@@ -8,7 +8,7 @@ import ApiKeyModal from "./ApiKeyModal";
 import InviteUserModal from "./InviteUserModal";
 import UserProfileModal from "./UserProfileModal";
 
-export default function Header({ user, apiKey, devices = [] }: { user: any; apiKey?: string; devices?: any[] }) {
+export default function Header({ user, apiKey, devices = [], autoPrompt = false }: { user: any; apiKey?: string; devices?: any[], autoPrompt?: boolean }) {
   const currentUserId = user?.id || user?._id;
 
   return (
@@ -40,7 +40,7 @@ export default function Header({ user, apiKey, devices = [] }: { user: any; apiK
           )}
           
           <div className="flex items-center gap-4 pl-4 border-l border-slate-800">
-            <UserProfileModal userProfile={user} />
+            <UserProfileModal userProfile={user} autoPrompt={autoPrompt} />
             
             <button
               onClick={() => signOut({ callbackUrl: '/login' })}

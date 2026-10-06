@@ -13,7 +13,7 @@ interface UserProfile {
   address?: string;
 }
 
-export default function UserProfileModal({ userProfile }: { userProfile: UserProfile }) {
+export default function UserProfileModal({ userProfile, autoPrompt = false }: { userProfile: UserProfile, autoPrompt?: boolean }) {
   // If labName is missing, open modal automatically on mount
   const [isOpen, setIsOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -28,10 +28,10 @@ export default function UserProfileModal({ userProfile }: { userProfile: UserPro
 
   useEffect(() => {
     setIsMounted(true);
-    if (!userProfile.labName) {
+    if (!userProfile.labName && autoPrompt) {
       setIsOpen(true);
     }
-  }, [userProfile.labName]);
+  }, [userProfile.labName, autoPrompt]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

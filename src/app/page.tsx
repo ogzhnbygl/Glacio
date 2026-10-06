@@ -32,7 +32,22 @@ export default async function Home() {
   
   const devices = await Device.find({ 
     $or: [{ ownerId: userId }, { sharedWith: userId }] 
-  }).populate("sharedWith", "email name").sort({ createdAt: -1 }).lean();
+  }).populate("sharedWith", "email name").populate("ownerId", "labName").sort({ createdAt: -1 }).lean();
+  
+  const ownedDevices = devices.filter((d: any) => {
+    const dOwnerId = d.ownerId?._id ? d.ownerId._id.toString() : d.ownerId?.toString();
+    return dOwnerId === userId;
+  });
+  
+  const autoPrompt = ownedDevices.length > 0 && !currentUser?.labName;
+
+  let displayLabName = currentUser?.labName;
+  if (!displayLabName && devices.length > 0) {
+    const firstDevice: any = devices[0];
+    if (firstDevice.ownerId && firstDevice.ownerId.labName) {
+      displayLabName = firstDevice.ownerId.labName;
+    }
+  }
   
   // Fetch latest telemetry for each device
   const devicesWithTemp = await Promise.all(devices.map(async (device: any) => {
@@ -62,6 +77,7 @@ export default async function Home() {
         user={{ ...session.user, labName: currentUser?.labName, institution: currentUser?.institution, address: currentUser?.address }} 
         apiKey={apiKey} 
         devices={JSON.parse(JSON.stringify(devices))} 
+        autoPrompt={autoPrompt}
       />
 
       <main className="max-w-7xl mx-auto px-6 py-12 relative z-10">
@@ -72,7 +88,7 @@ export default async function Home() {
               <span>Sistem Aktif</span>
             </div>
             <h1 className="text-4xl md:text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400 mb-3">
-              Glacio <span className="font-light">Panel</span> {currentUser?.labName && <span className="text-cyan-500 font-light text-3xl md:text-4xl">- {currentUser.labName}</span>}
+              Glacio <span className="font-light">Panel</span> {displayLabName && <span className="text-cyan-500 font-light text-3xl md:text-4xl">- {displayLabName}</span>}
             </h1>
             <p className="text-slate-400 max-w-xl text-lg mb-4">
               Laboratuvar ve dolap sıcaklıklarının gerçek zamanlı izleme ve yönetim platformu.
