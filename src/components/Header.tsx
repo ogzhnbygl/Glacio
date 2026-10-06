@@ -4,7 +4,12 @@ import { signOut } from "next-auth/react";
 import Link from "next/link";
 import { LogOut, User as UserIcon, ShieldCheck } from "lucide-react";
 
-export default function Header({ user }: { user: any }) {
+import ApiKeyModal from "./ApiKeyModal";
+import InviteUserModal from "./InviteUserModal";
+
+export default function Header({ user, apiKey, devices = [] }: { user: any; apiKey?: string; devices?: any[] }) {
+  const currentUserId = user?.id || user?._id;
+
   return (
     <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-md sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -15,15 +20,24 @@ export default function Header({ user }: { user: any }) {
           Glacio
         </Link>
 
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4 sm:gap-6">
           {user?.role === "admin" && (
             <Link href="/admin" className="text-sm font-medium text-amber-400 hover:text-amber-300 flex items-center gap-1.5 transition-colors">
               <ShieldCheck className="w-4 h-4" />
-              Süper Admin
+              <span className="hidden sm:inline-block">Süper Admin</span>
             </Link>
           )}
+
+          {/* Show modals only if data is passed (e.g. on Dashboard) */}
+          {apiKey !== undefined && (
+            <ApiKeyModal apiKey={apiKey} deviceCount={devices.length} />
+          )}
+
+          {devices.length > 0 && currentUserId && (
+            <InviteUserModal devices={devices} currentUserId={currentUserId} />
+          )}
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 pl-4 border-l border-slate-800">
             <div className="flex items-center gap-2 text-sm text-slate-300">
               <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
                 <UserIcon className="w-4 h-4 text-slate-400" />

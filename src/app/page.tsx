@@ -32,7 +32,7 @@ export default async function Home() {
   
   const devices = await Device.find({ 
     $or: [{ ownerId: userId }, { sharedWith: userId }] 
-  }).sort({ createdAt: -1 }).lean();
+  }).populate("sharedWith", "email name").sort({ createdAt: -1 }).lean();
   
   // Fetch latest telemetry for each device
   const devicesWithTemp = await Promise.all(devices.map(async (device: any) => {
@@ -57,7 +57,11 @@ export default async function Home() {
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-cyan-500/30">
       <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))] opacity-5 pointer-events-none"></div>
       
-      <Header user={session.user} />
+      <Header 
+        user={session.user} 
+        apiKey={apiKey} 
+        devices={JSON.parse(JSON.stringify(devices))} 
+      />
 
       <main className="max-w-7xl mx-auto px-6 py-12 relative z-10">
         <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -72,17 +76,6 @@ export default async function Home() {
             <p className="text-slate-400 max-w-xl text-lg mb-4">
               Laboratuvar ve dolap sıcaklıklarının gerçek zamanlı izleme ve yönetim platformu.
             </p>
-            
-            {/* API Key Display Box */}
-            <div className="mt-6 bg-slate-900/50 border border-slate-800 rounded-xl p-4 inline-block">
-              <p className="text-sm text-slate-400 mb-2 font-medium">Size Özel Cihaz Kurulum Anahtarı (API Key):</p>
-              <div className="flex items-center gap-3">
-                <code className="px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-cyan-400 text-sm select-all">
-                  {apiKey}
-                </code>
-              </div>
-              <p className="text-xs text-slate-500 mt-2">Bu anahtarı cihazı kurarken "API Secret Key" bölümüne yapıştırın.</p>
-            </div>
           </div>
           
           <div className="flex gap-4 mb-4">
