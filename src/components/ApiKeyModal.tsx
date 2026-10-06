@@ -1,11 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Key, X, AlertCircle } from "lucide-react";
+import { Key, X, AlertCircle, Copy, Check } from "lucide-react";
 import { createPortal } from "react-dom";
 
 export default function ApiKeyModal({ apiKey, deviceCount }: { apiKey: string; deviceCount: number }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(apiKey);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <>
@@ -46,10 +53,17 @@ export default function ApiKeyModal({ apiKey, deviceCount }: { apiKey: string; d
                     Bu anahtarı, cihazınızı laboratuvar ağına bağlarken açılan <span className="text-cyan-400">"Glacio-Setup"</span> sayfasındaki <span className="font-semibold text-slate-300">"API Secret Key"</span> bölümüne yapıştırın.
                   </p>
                   
-                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mt-2">
+                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 mt-2 relative group pr-12">
                     <code className="text-cyan-400 text-sm select-all break-all block">
                       {apiKey}
                     </code>
+                    <button
+                      onClick={handleCopy}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-slate-500 hover:text-cyan-400 hover:bg-slate-800 transition-colors"
+                      title="Kopyala"
+                    >
+                      {copied ? <Check className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5" />}
+                    </button>
                   </div>
                 </>
               )}

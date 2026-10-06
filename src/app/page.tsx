@@ -59,7 +59,7 @@ export default async function Home() {
       <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))] opacity-5 pointer-events-none"></div>
       
       <Header 
-        user={session.user} 
+        user={{ ...session.user, labName: currentUser?.labName, institution: currentUser?.institution, address: currentUser?.address }} 
         apiKey={apiKey} 
         devices={JSON.parse(JSON.stringify(devices))} 
       />
@@ -72,7 +72,7 @@ export default async function Home() {
               <span>Sistem Aktif</span>
             </div>
             <h1 className="text-4xl md:text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400 mb-3">
-              Glacio <span className="font-light">Panel</span>
+              Glacio <span className="font-light">Panel</span> {currentUser?.labName && <span className="text-cyan-500 font-light text-3xl md:text-4xl">- {currentUser.labName}</span>}
             </h1>
             <p className="text-slate-400 max-w-xl text-lg mb-4">
               Laboratuvar ve dolap sıcaklıklarının gerçek zamanlı izleme ve yönetim platformu.

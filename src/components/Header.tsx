@@ -2,10 +2,11 @@
 
 import { signOut } from "next-auth/react";
 import Link from "next/link";
-import { LogOut, User as UserIcon, ShieldCheck } from "lucide-react";
+import { LogOut, ShieldCheck } from "lucide-react";
 
 import ApiKeyModal from "./ApiKeyModal";
 import InviteUserModal from "./InviteUserModal";
+import UserProfileModal from "./UserProfileModal";
 
 export default function Header({ user, apiKey, devices = [] }: { user: any; apiKey?: string; devices?: any[] }) {
   const currentUserId = user?.id || user?._id;
@@ -38,12 +39,7 @@ export default function Header({ user, apiKey, devices = [] }: { user: any; apiK
           )}
           
           <div className="flex items-center gap-4 pl-4 border-l border-slate-800">
-            <div className="flex items-center gap-2 text-sm text-slate-300">
-              <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
-                <UserIcon className="w-4 h-4 text-slate-400" />
-              </div>
-              <span className="hidden sm:inline-block">{user?.name || user?.email}</span>
-            </div>
+            <UserProfileModal userProfile={user} />
             
             <button
               onClick={() => signOut({ callbackUrl: '/login' })}

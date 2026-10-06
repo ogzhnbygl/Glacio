@@ -6,6 +6,9 @@ export interface IUser extends Document {
   password?: string; // Optional for OAuth users if added later
   role: 'admin' | 'user';
   apiKey: string;    // Unique API key for the user's devices
+  labName?: string;
+  institution?: string;
+  address?: string;
   createdAt: Date;
 }
 
@@ -15,6 +18,9 @@ const UserSchema = new Schema<IUser>({
   password: { type: String, required: true },
   role: { type: String, enum: ['admin', 'user'], default: 'user' },
   apiKey: { type: String, required: true, unique: true, index: true },
+  labName: { type: String },
+  institution: { type: String },
+  address: { type: String },
   createdAt: { type: Date, default: Date.now },
 });
 
