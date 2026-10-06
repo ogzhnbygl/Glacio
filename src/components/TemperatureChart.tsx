@@ -42,7 +42,10 @@ export default function TemperatureChart({ data, minTemp, maxTemp, minTemp2, max
             fontSize={12}
             tickLine={false}
             axisLine={false}
-            domain={['auto', 'auto']}
+            domain={[
+              (dataMin: number) => Math.floor(Math.min(dataMin, minTemp, minTemp2 ?? minTemp) - 2),
+              (dataMax: number) => Math.ceil(Math.max(dataMax, maxTemp, maxTemp2 ?? maxTemp) + 2)
+            ]}
             tickFormatter={(val) => `${val}°C`}
           />
           <Tooltip 

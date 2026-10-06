@@ -30,9 +30,17 @@ export default async function Home() {
   const currentUser = await User.findById(userId).lean();
   const apiKey = currentUser?.apiKey || "";
   
-  const devices = await Device.find({ 
-    $or: [{ ownerId: userId }, { sharedWith: userId }] 
-  }).populate("sharedWith", "email name").populate("ownerId", "labName").sort({ createdAt: -1 }).lean();
+  const isAdmin = currentUser?.email === "admin@glacio.com";
+
+  const deviceQuery = isAdmin 
+    ? {} 
+    : { $or: [{ ownerId: userId }, { sharedWith: userId }] };
+
+  const devices = await Device.find(deviceQuery)
+    .populate("sharedWith", "email name")
+    .populate("ownerId", "labName institution address")
+    .sort({ createdAt: -1 })
+    .lean();
   
   const ownedDevices = devices.filter((d: any) => {
     const dOwnerId = d.ownerId?._id ? d.ownerId._id.toString() : d.ownerId?.toString();
@@ -42,10 +50,17 @@ export default async function Home() {
   const autoPrompt = ownedDevices.length > 0 && !currentUser?.labName;
 
   let displayLabName = currentUser?.labName;
-  if (!displayLabName && devices.length > 0) {
+  let displayInstitution = currentUser?.institution;
+  let displayAddress = currentUser?.address;
+  
+  if (isAdmin) {
+    displayLabName = "SUPER ADMIN (Tüm Cihazlar)";
+  } else if (!displayLabName && devices.length > 0) {
     const firstDevice: any = devices[0];
     if (firstDevice.ownerId && firstDevice.ownerId.labName) {
       displayLabName = firstDevice.ownerId.labName;
+      displayInstitution = firstDevice.ownerId.institution;
+      displayAddress = firstDevice.ownerId.address;
     }
   }
   
@@ -74,7 +89,7 @@ export default async function Home() {
       <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))] opacity-5 pointer-events-none"></div>
       
       <Header 
-        user={{ ...session.user, labName: currentUser?.labName, institution: currentUser?.institution, address: currentUser?.address }} 
+        user={{ ...session.user, labName: displayLabName, institution: displayInstitution, address: displayAddress }} 
         apiKey={apiKey} 
         devices={JSON.parse(JSON.stringify(devices))} 
         autoPrompt={autoPrompt}
@@ -124,6 +139,11 @@ export default async function Home() {
                       {device.name}
                     </h2>
                     <div className="text-slate-500 text-sm font-mono">{device.deviceId}</div>
+                    {isAdmin && device.ownerId?.labName && (
+                      <div className="mt-1 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[10px] uppercase font-bold tracking-wider">
+                        {device.ownerId.labName}
+                      </div>
+                    )}
                   </div>
                   
                   <div className={`px-2.5 py-1 rounded-full text-xs font-medium border ${

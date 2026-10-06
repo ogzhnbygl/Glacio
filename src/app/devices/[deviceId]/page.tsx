@@ -7,7 +7,9 @@ import Link from "next/link";
 import DeviceSettingsModal from "@/components/DeviceSettingsModal";
 import { formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,22 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
   if (!device) {
     notFound();
   }
+
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    redirect("/login");
+  }
+  
+  const userId = (session.user as any).id;
+  const isAdmin = session.user?.email === "admin@glacio.com";
+  const isOwner = device.ownerId?.toString() === userId;
+  const isSharedWith = device.sharedWith?.some((id: any) => id.toString() === userId);
+  
+  if (!isOwner && !isSharedWith && !isAdmin) {
+    notFound(); // Veya yetkisiz giriş hatası verebilirsiniz
+  }
+
+  const canEdit = isOwner || isAdmin;
 
   // Fetch last 100 logs
   const logs = await TelemetryLog.find({ deviceId })
@@ -63,8 +81,9 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
             </div>
             <p className="text-slate-400 font-mono text-sm">ID: {device.deviceId}</p>
           </div>
-          
-          <DeviceSettingsModal device={JSON.parse(JSON.stringify(device))} />
+          {canEdit && (
+            <DeviceSettingsModal device={JSON.parse(JSON.stringify(device))} />
+          )}
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">

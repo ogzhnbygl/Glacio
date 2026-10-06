@@ -79,11 +79,9 @@ export default function UserProfileModal({ userProfile, autoPrompt = false }: { 
               <h3 className="text-xl font-semibold text-white flex items-center gap-2">
                 <UserIcon className="w-5 h-5 text-cyan-500" /> Profil ve Laboratuvar Bilgileri
               </h3>
-              {userProfile.labName && (
-                <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
-              )}
+              <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
             </div>
             
             <form onSubmit={handleSave} className="p-6 space-y-5">
@@ -145,15 +143,13 @@ export default function UserProfileModal({ userProfile, autoPrompt = false }: { 
               </div>
 
               <div className="flex gap-3 justify-end pt-4 border-t border-slate-800/50 mt-6">
-                {userProfile.labName && (
-                  <button
-                    type="button"
-                    onClick={() => setIsOpen(false)}
-                    className="px-5 py-2.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
-                  >
-                    İptal
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setIsOpen(false)}
+                  className="px-5 py-2.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  İptal
+                </button>
                 <button
                   type="submit"
                   disabled={loading || !labName.trim()}
