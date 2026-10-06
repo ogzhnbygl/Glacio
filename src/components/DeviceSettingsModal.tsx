@@ -9,6 +9,8 @@ export default function DeviceSettingsModal({ device }: { device: any }) {
   const [name, setName] = useState(device.name);
   const [minTemp, setMinTemp] = useState(device.minTemp);
   const [maxTemp, setMaxTemp] = useState(device.maxTemp);
+  const [minTemp2, setMinTemp2] = useState(device.minTemp2 || -22);
+  const [maxTemp2, setMaxTemp2] = useState(device.maxTemp2 || -16);
   const [cabinetType, setCabinetType] = useState(device.cabinetType || 'unconfigured');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -23,7 +25,13 @@ export default function DeviceSettingsModal({ device }: { device: any }) {
       const res = await fetch(`/api/devices/${device.deviceId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, minTemp, maxTemp, cabinetType }),
+        body: JSON.stringify({ 
+          name, 
+          minTemp, 
+          maxTemp, 
+          cabinetType,
+          ...(cabinetType === 'dual_plus4_minus20' ? { minTemp2, maxTemp2 } : {}) 
+        }),
       });
 
       if (!res.ok) {
@@ -97,6 +105,9 @@ export default function DeviceSettingsModal({ device }: { device: any }) {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2 text-sm font-semibold text-cyan-400 mt-2 mb-[-8px]">
+                  {cabinetType === 'dual_plus4_minus20' ? 'Sensör 1 (+4°C Bölümü) Hedefleri' : 'Sensör Hedefleri'}
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-2">Minimum Sıcaklık (°C)</label>
                   <input
@@ -120,6 +131,36 @@ export default function DeviceSettingsModal({ device }: { device: any }) {
                   />
                 </div>
               </div>
+
+              {cabinetType === 'dual_plus4_minus20' && (
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                  <div className="col-span-2 text-sm font-semibold text-cyan-400 mb-[-8px]">
+                    Sensör 2 (-20°C Bölümü) Hedefleri
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-2">Minimum Sıcaklık (°C)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={minTemp2}
+                      onChange={(e) => setMinTemp2(parseFloat(e.target.value))}
+                      className="block w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-2">Maksimum Sıcaklık (°C)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={maxTemp2}
+                      onChange={(e) => setMaxTemp2(parseFloat(e.target.value))}
+                      className="block w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-3 justify-end pt-4 border-t border-slate-800/50 mt-6">
                 <button

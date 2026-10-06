@@ -30,8 +30,14 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
     .lean();
     
   const currentTemp = logs.length > 0 ? logs[0].temperature : null;
+  const currentTemp2 = logs.length > 0 ? logs[0].temperature2 : null;
   const isOnline = logs.length > 0 ? new Date().getTime() - new Date(device.lastSeen).getTime() < 5 * 60 * 1000 : false;
-  const isDanger = currentTemp !== null && (currentTemp < device.minTemp || currentTemp > device.maxTemp);
+  
+  const isDual = device.cabinetType === 'dual_plus4_minus20';
+  
+  const isDanger1 = currentTemp !== null && (currentTemp < device.minTemp || currentTemp > device.maxTemp);
+  const isDanger2 = isDual && currentTemp2 !== null && device.minTemp2 !== undefined && device.maxTemp2 !== undefined && (currentTemp2 < device.minTemp2 || currentTemp2 > device.maxTemp2);
+  const isDanger = isDanger1 || isDanger2;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-cyan-500/30 pb-20">
@@ -72,18 +78,38 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
               <Activity className="w-4 h-4" /> Güncel Durum
             </h3>
             
-            <div className="flex items-end gap-3 mb-6">
-              <div className={`text-6xl font-light tracking-tighter ${
-                !isOnline ? 'text-slate-500' :
-                isDanger ? 'text-rose-400' : 'text-white'
-              }`}>
-                {currentTemp !== null ? currentTemp.toFixed(1) : '--'}
-                <span className="text-3xl text-slate-500 ml-1">°C</span>
+            <div className={`flex items-end gap-6 mb-6 ${isDual ? 'flex-col items-start gap-4' : ''}`}>
+              <div className="flex items-center gap-3">
+                {isDual && <span className="text-slate-500 font-medium text-sm w-16">Sensör 1</span>}
+                <div className={`text-6xl font-light tracking-tighter ${
+                  !isOnline ? 'text-slate-500' :
+                  isDanger1 ? 'text-rose-400' : 'text-white'
+                }`}>
+                  {currentTemp !== null ? currentTemp.toFixed(1) : '--'}
+                  <span className="text-3xl text-slate-500 ml-1">°C</span>
+                </div>
+                {isDanger1 && isOnline && (
+                  <div className="text-rose-400 animate-pulse" title="Sıcaklık limitleri dışında!">
+                    <AlertTriangle className="w-8 h-8" />
+                  </div>
+                )}
               </div>
-              
-              {isDanger && isOnline && (
-                <div className="mb-2 text-rose-400 animate-pulse" title="Sıcaklık limitleri dışında!">
-                  <AlertTriangle className="w-8 h-8" />
+
+              {isDual && (
+                <div className="flex items-center gap-3">
+                  <span className="text-slate-500 font-medium text-sm w-16">Sensör 2</span>
+                  <div className={`text-6xl font-light tracking-tighter ${
+                    !isOnline ? 'text-slate-500' :
+                    isDanger2 ? 'text-rose-400' : 'text-white'
+                  }`}>
+                    {currentTemp2 !== null && currentTemp2 !== undefined ? currentTemp2.toFixed(1) : '--'}
+                    <span className="text-3xl text-slate-500 ml-1">°C</span>
+                  </div>
+                  {isDanger2 && isOnline && (
+                    <div className="text-rose-400 animate-pulse" title="Sensör 2 limitleri dışında!">
+                      <AlertTriangle className="w-8 h-8" />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -127,16 +153,34 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
               </div>
             </div>
 
-            <div className="flex items-center gap-4 max-w-md">
-              <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 text-center">
-                <div className="text-slate-500 text-xs mb-1">Minimum</div>
-                <div className="text-2xl font-semibold text-blue-400">{device.minTemp}°C</div>
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-4 max-w-md">
+                {isDual && <div className="text-sm font-medium text-slate-500 w-16">Sensör 1</div>}
+                <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 text-center">
+                  <div className="text-slate-500 text-xs mb-1">Minimum</div>
+                  <div className="text-2xl font-semibold text-blue-400">{device.minTemp}°C</div>
+                </div>
+                <div className="text-slate-600">/</div>
+                <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 text-center">
+                  <div className="text-slate-500 text-xs mb-1">Maksimum</div>
+                  <div className="text-2xl font-semibold text-rose-400">{device.maxTemp}°C</div>
+                </div>
               </div>
-              <div className="text-slate-600">-</div>
-              <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 text-center">
-                <div className="text-slate-500 text-xs mb-1">Maksimum</div>
-                <div className="text-2xl font-semibold text-rose-400">{device.maxTemp}°C</div>
-              </div>
+
+              {isDual && (
+                <div className="flex items-center gap-4 max-w-md">
+                  <div className="text-sm font-medium text-slate-500 w-16">Sensör 2</div>
+                  <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 text-center">
+                    <div className="text-slate-500 text-xs mb-1">Minimum</div>
+                    <div className="text-2xl font-semibold text-purple-400">{device.minTemp2 ?? '--'}°C</div>
+                  </div>
+                  <div className="text-slate-600">/</div>
+                  <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 text-center">
+                    <div className="text-slate-500 text-xs mb-1">Maksimum</div>
+                    <div className="text-2xl font-semibold text-amber-400">{device.maxTemp2 ?? '--'}°C</div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -149,7 +193,14 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
           </div>
           
           {logs.length > 0 ? (
-             <TemperatureChart data={logs} minTemp={device.minTemp} maxTemp={device.maxTemp} />
+             <TemperatureChart 
+                data={logs} 
+                minTemp={device.minTemp} 
+                maxTemp={device.maxTemp} 
+                minTemp2={device.minTemp2}
+                maxTemp2={device.maxTemp2}
+                cabinetType={device.cabinetType}
+              />
           ) : (
             <div className="h-80 flex items-center justify-center text-slate-500">
               Henüz yeterli veri yok.

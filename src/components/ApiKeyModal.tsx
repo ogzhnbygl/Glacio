@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Key, X, AlertCircle } from "lucide-react";
+import { createPortal } from "react-dom";
 
 export default function ApiKeyModal({ apiKey, deviceCount }: { apiKey: string; deviceCount: number }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -16,8 +17,8 @@ export default function ApiKeyModal({ apiKey, deviceCount }: { apiKey: string; d
         <span className="hidden sm:inline-block">API Key</span>
       </button>
 
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+      {isOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between p-6 border-b border-slate-800">
               <h3 className="text-xl font-semibold text-white flex items-center gap-2">
@@ -63,7 +64,8 @@ export default function ApiKeyModal({ apiKey, deviceCount }: { apiKey: string; d
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

@@ -45,12 +45,13 @@ export default async function Home() {
       ? new Date().getTime() - new Date(device.lastSeen).getTime() < 5 * 60 * 1000 
       : false;
     
-    return {
-      ...device,
-      _id: device._id.toString(),
-      currentTemp: latestLog ? latestLog.temperature : null,
-      isActuallyOnline: isOnline
-    };
+      return {
+        ...device,
+        _id: device._id.toString(),
+        currentTemp: latestLog ? latestLog.temperature : null,
+        currentTemp2: latestLog ? latestLog.temperature2 : null,
+        isActuallyOnline: isOnline
+      };
   }));
 
   return (
@@ -86,7 +87,12 @@ export default async function Home() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {devicesWithTemp.map((device) => {
             const hasTemp = device.currentTemp !== null;
-            const isDanger = hasTemp && (device.currentTemp < device.minTemp || device.currentTemp > device.maxTemp);
+            const hasTemp2 = device.currentTemp2 !== null && device.currentTemp2 !== undefined;
+            const isDual = device.cabinetType === 'dual_plus4_minus20';
+
+            const isDanger1 = hasTemp && (device.currentTemp < device.minTemp || device.currentTemp > device.maxTemp);
+            const isDanger2 = isDual && hasTemp2 && device.minTemp2 !== undefined && device.maxTemp2 !== undefined && (device.currentTemp2 < device.minTemp2 || device.currentTemp2 > device.maxTemp2);
+            const isDanger = isDanger1 || isDanger2;
             
             return (
               <Link href={`/devices/${device.deviceId}`} key={device._id} className="group relative bg-slate-900 border border-slate-800 rounded-2xl p-6 transition-all hover:bg-slate-800/80 hover:border-slate-700 hover:shadow-xl hover:shadow-cyan-900/10 overflow-hidden block">
@@ -113,31 +119,63 @@ export default async function Home() {
                   </div>
                 </div>
 
-                <div className="flex items-end gap-3 mb-6">
-                  <div className={`text-5xl font-light tracking-tighter ${
-                    !device.isActuallyOnline ? 'text-slate-500' :
-                    isDanger ? 'text-rose-400' : 'text-white'
-                  }`}>
-                    {hasTemp ? device.currentTemp.toFixed(1) : '--'}
-                    <span className="text-2xl text-slate-500 ml-1">°C</span>
+                <div className={`flex items-end gap-3 mb-6 ${isDual ? 'flex-col items-start gap-2' : ''}`}>
+                  <div className="flex items-center gap-3 w-full justify-between">
+                    <div className="flex items-end gap-2">
+                      {isDual && <span className="text-slate-500 font-medium text-xs mb-1 w-12">Sensör 1</span>}
+                      <div className={`text-5xl font-light tracking-tighter ${
+                        !device.isActuallyOnline ? 'text-slate-500' :
+                        isDanger1 ? 'text-rose-400' : 'text-white'
+                      }`}>
+                        {hasTemp ? device.currentTemp.toFixed(1) : '--'}
+                        <span className="text-2xl text-slate-500 ml-1">°C</span>
+                      </div>
+                    </div>
+                    {isDanger1 && device.isActuallyOnline && (
+                      <div className="text-rose-400 animate-pulse" title="Sıcaklık limitleri dışında!">
+                        <AlertTriangle className="w-6 h-6" />
+                      </div>
+                    )}
                   </div>
-                  
-                  {isDanger && device.isActuallyOnline && (
-                    <div className="mb-2 text-rose-400 animate-pulse" title="Sıcaklık limitleri dışında!">
-                      <AlertTriangle className="w-6 h-6" />
+
+                  {isDual && (
+                    <div className="flex items-center gap-3 w-full justify-between mt-2 pt-2 border-t border-slate-800/30">
+                      <div className="flex items-end gap-2">
+                        <span className="text-slate-500 font-medium text-xs mb-1 w-12">Sensör 2</span>
+                        <div className={`text-5xl font-light tracking-tighter ${
+                          !device.isActuallyOnline ? 'text-slate-500' :
+                          isDanger2 ? 'text-rose-400' : 'text-white'
+                        }`}>
+                          {hasTemp2 ? device.currentTemp2.toFixed(1) : '--'}
+                          <span className="text-2xl text-slate-500 ml-1">°C</span>
+                        </div>
+                      </div>
+                      {isDanger2 && device.isActuallyOnline && (
+                        <div className="text-rose-400 animate-pulse" title="Sensör 2 limitleri dışında!">
+                          <AlertTriangle className="w-6 h-6" />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-800/50">
-                  <div>
+                  <div className="col-span-2 sm:col-span-1">
                     <div className="text-slate-500 text-xs mb-1">Hedef Aralık</div>
-                    <div className="text-slate-300 text-sm font-medium flex items-center gap-1">
-                      <Thermometer className="w-3.5 h-3.5 text-cyan-500" />
-                      {device.minTemp}°C - {device.maxTemp}°C
+                    <div className="text-slate-300 text-sm font-medium flex flex-col gap-1">
+                      <div className="flex items-center gap-1">
+                        <Thermometer className="w-3.5 h-3.5 text-cyan-500" />
+                        {device.minTemp}°C / {device.maxTemp}°C {isDual && <span className="text-[10px] text-slate-500">(S1)</span>}
+                      </div>
+                      {isDual && (
+                        <div className="flex items-center gap-1">
+                          <Thermometer className="w-3.5 h-3.5 text-purple-400" />
+                          {device.minTemp2 ?? '--'}°C / {device.maxTemp2 ?? '--'}°C <span className="text-[10px] text-slate-500">(S2)</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div>
+                  <div className="col-span-2 sm:col-span-1">
                     <div className="text-slate-500 text-xs mb-1">Son Güncelleme</div>
                     <div className="text-slate-300 text-sm font-medium flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5 text-cyan-500" />

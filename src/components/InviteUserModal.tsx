@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { UserPlus, X, Send, Mail, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 
 export default function InviteUserModal({ devices, currentUserId }: { devices: any[]; currentUserId: string }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -110,8 +111,8 @@ export default function InviteUserModal({ devices, currentUserId }: { devices: a
         <span className="hidden sm:inline-block">Davet Et</span>
       </button>
 
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+      {isOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
             <div className="flex items-center justify-between p-6 border-b border-slate-800 sticky top-0 bg-slate-900/95 backdrop-blur z-10">
               <h3 className="text-xl font-semibold text-white flex items-center gap-2">
@@ -213,7 +214,8 @@ export default function InviteUserModal({ devices, currentUserId }: { devices: a
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

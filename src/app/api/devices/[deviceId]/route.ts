@@ -13,7 +13,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ de
 
     const { deviceId } = await params;
     const body = await req.json();
-    const { name, minTemp, maxTemp, cabinetType } = body;
+    const { name, minTemp, maxTemp, minTemp2, maxTemp2, cabinetType } = body;
 
     await dbConnect();
 
@@ -34,6 +34,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ de
     if (name) device.name = name;
     if (minTemp !== undefined) device.minTemp = minTemp;
     if (maxTemp !== undefined) device.maxTemp = maxTemp;
+    if (minTemp2 !== undefined) device.minTemp2 = minTemp2;
+    if (maxTemp2 !== undefined) device.maxTemp2 = maxTemp2;
     if (cabinetType) device.cabinetType = cabinetType;
 
     await device.save();
