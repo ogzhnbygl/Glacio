@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Glacio - Laboratuvar Sıcaklık İzleme Sistemi
 
-## Getting Started
+Glacio, laboratuvar buzdolapları ve dondurucularının gerçek zamanlı sıcaklık takibi ve yönetimi için tasarlanmış uçtan uca bir IoT (Nesnelerin İnterneti) çözümüdür. Hassas medikal ve araştırma materyallerinin güvenli sıcaklık sınırları içinde saklanmasını sağlar.
 
-First, run the development server:
+## 🚀 Özellikler
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Gerçek Zamanlı İzleme:** Sensörlerden gelen sıcaklık verilerini anlık olarak takip edin.
+- **Cihaz Yönetimi:** Yeni cihazları sisteme dahil edin (claim), sahiplik durumunu yönetin ve farklı dolap tipleri (+4°C, -20°C, -80°C) için hedef sıcaklık aralıklarını belirleyin.
+- **Zaman Serisi Verileri (Time Series):** Telemetri verileri MongoDB'de yüksek performanslı Time Series koleksiyonlarında saklanır ve 30 gün sonra otomatik olarak temizlenir.
+- **Akıllı Uyarılar:** Sıcaklıklar belirlenen güvenli aralığın dışına çıktığında panel üzerinde görsel alarmlar (ve yakında eklenecek olan Telegram bildirimleri) ile bilgilendirme sağlar.
+- **Kolay Donanım Kurulumu:** Cihaz ilk açıldığında oluşturulan "Glacio-Setup" Wi-Fi ağı üzerinden captive portal ile kolayca ağa bağlanır ve API ayarları yapılandırılır.
+
+## 🛠️ Kullanılan Teknolojiler
+
+**Web Uygulaması:**
+- **Framework:** Next.js (App Router)
+- **Tasarım:** Tailwind CSS, Lucide React
+- **Veritabanı:** MongoDB & Mongoose
+- **Kimlik Doğrulama:** NextAuth.js
+
+**Donanım (IoT) Düğümü:**
+- **Mikrodenetleyici:** ESP8266
+- **Sensörler:** NTC Termistör (Gelecekte DS18B20 veya PT100 eklenebilir)
+- **Kütüphaneler/Özellikler:** WiFiManager (Kurulum arayüzü), LittleFS (Dahili yapılandırma hafızası), ArduinoOTA (Kablosuz kod güncelleme)
+
+## 📦 Kurulum ve Çalıştırma (Yazılım)
+
+### Gereksinimler
+
+- Node.js (v18+)
+- Geçerli bir MongoDB veritabanı (Atlas veya lokal)
+
+### Ortam Değişkenleri (.env)
+
+Proje dizininde bir `.env` (veya `.env.local`) dosyası oluşturun ve aşağıdaki değişkenleri tanımlayın:
+
+```env
+MONGODB_URI=mongodb+srv://<kullanici>:<sifre>@cluster.mongodb.net/glacio?retryWrites=true&w=majority
+NEXTAUTH_SECRET=gizli_bir_nextauth_anahtari_olusturun
+NEXTAUTH_URL=http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Kurulum
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Bağımlılıkları yükleyin:
+```bash
+npm install
+# veya
+yarn install
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+2. Geliştirme sunucusunu başlatın:
+```bash
+npm run dev
+```
 
-## Learn More
+3. Tarayıcınızda [http://localhost:3000](http://localhost:3000) adresine gidin.
 
-To learn more about Next.js, take a look at the following resources:
+## 🔌 Donanım Kurulumu (ESP8266)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Arduino/ESP8266 kodları `Glacio_Arduino/` dizini altındadır.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. `Glacio_Arduino.ino` dosyasını Arduino IDE ile açın.
+2. Gerekli kütüphaneleri (Library Manager üzerinden) kurun: `WiFiManager`, `ArduinoJson`.
+3. Kodu ESP8266 kartınıza yükleyin (Flash).
+4. Cihaz ilk başlatıldığında (veya resetlendiğinde) **"Glacio-Setup"** adında bir Wi-Fi ağı yayınlayacaktır.
+5. Telefonunuz veya bilgisayarınızla bu ağa bağlanın. Karşınıza çıkan ekrandan Wi-Fi şifrenizi, Cihaz ID'sini ve Vercel/Lokal API bilgilerinizi girerek kurulumu tamamlayın.
