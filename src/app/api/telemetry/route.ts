@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { deviceId, temperature } = body;
+    const { deviceId, temperature, temperature2 } = body;
 
     if (!deviceId || typeof temperature !== 'number') {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
     await TelemetryLog.create({
       deviceId,
       temperature,
+      ...(typeof temperature2 === 'number' ? { temperature2 } : {}),
       timestamp: new Date()
     });
 

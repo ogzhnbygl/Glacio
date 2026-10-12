@@ -6,29 +6,30 @@
 #include <WiFiManager.h>
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 // --- Varsayılan Ayarlar (Kullanıcı arayüzünden güncellenebilir) ---
-char device_id[64]  = "glacio-node-01";
-char api_key[128]   = "glacio-super-secret-key-2026";
-char api_url[128]   = "https://glacio.vercel.app/api/telemetry";
-char temp_offset[16] = "0.0";
+char device_id[64]   = "glacio-node-01";
+char api_key[128]    = "glacio-super-secret-key-2026";
+char api_url[128]    = "https://glacio.vercel.app/api/telemetry";
+char temp_offset[16]  = "0.0";
+char temp_offset2[16] = "0.0";
 
 bool shouldSaveConfig = false;
 
 // Pin Tanımları
-const int ntcPin       = A0;
-const int ledPin       = 2; // Dahili mavi LED (GPIO 2 / D4)
-const int resetBtnPin  = 0; // FLASH Butonu (GPIO 0) - Ayarları sıfırlayıp AP moduna geçmek için
+#define ONE_WIRE_BUS 4       // DS18B20 Data pini (D2 = GPIO 4) - Her iki sensör de bu pine paralel bağlanır!
+const int ledPin       = 2;  // Dahili mavi LED (GPIO 2 / D4)
+const int resetBtnPin  = 0;  // FLASH Butonu (GPIO 0) - Ayarları sıfırlayıp AP moduna geçmek için
 
-// Sensör Parametreleri
-const float B_COEFFICIENT   = 3950.0;
-const float ROOM_TEMP       = 298.15;   // 25°C
-const float ROOM_RESISTANCE = 100000.0; // 100k
-const float R_EQUIVALENT    = 76200.0;  // 100k paralel eşdeğer direnç
+// DS18B20 Sensör Nesneleri
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
 
 // Zamanlayıcı
 unsigned long lastPostTime = 0;
-const unsigned long POST_INTERVAL = 30000; // 30 saniye
+const unsigned long POST_INTERVAL = 15000; // 15 saniye (Stabil telemetri)
 
 // WiFiManager kaydetme bayrağı
 void saveConfigCallback() {
@@ -54,6 +55,7 @@ void loadConfig() {
           strcpy(api_key, json["api_key"] | api_key);
           strcpy(api_url, json["api_url"] | api_url);
           strcpy(temp_offset, json["temp_offset"] | temp_offset);
+          strcpy(temp_offset2, json["temp_offset2"] | temp_offset2);
           Serial.println("[FS] Kayitli ayarlar yuklendi.");
         }
       }
@@ -66,10 +68,11 @@ void loadConfig() {
 // Flash (LittleFS) içine yapılandırmayı kaydet
 void saveConfig() {
   StaticJsonDocument<512> json;
-  json["device_id"]   = device_id;
-  json["api_key"]     = api_key;
-  json["api_url"]     = api_url;
-  json["temp_offset"] = temp_offset;
+  json["device_id"]    = device_id;
+  json["api_key"]      = api_key;
+  json["api_url"]      = api_url;
+  json["temp_offset"]  = temp_offset;
+  json["temp_offset2"] = temp_offset2;
 
   File configFile = LittleFS.open("/config.json", "w");
   if (configFile) {
@@ -79,47 +82,70 @@ void saveConfig() {
   }
 }
 
-// Sıcaklık Okuma Fonksiyonu
-float readTemperature() {
-  float rawADC = 0;
-  for (int i = 0; i < 20; i++) {
-    rawADC += analogRead(ntcPin);
-    delay(5);
+// Çift Sensör Sıcaklık Okuma Fonksiyonu (DS18B20)
+bool readTemperatures(float &t1, float &t2) {
+  sensors.begin(); // Temassızlık sonrası hattı yeniden tara
+  int devCount = sensors.getDeviceCount();
+
+  if (devCount == 0) {
+    Serial.println("[SENSOR] Sensor bulunamadi (0 adet)! Baglantilari kontrol edin.");
+    t1 = -999.0;
+    t2 = -999.0;
+    return false;
   }
-  rawADC /= 20.0;
 
-  if (rawADC < 15.0 || rawADC > 1010.0) return -999.0;
+  sensors.requestTemperatures();
+  delay(800); // 12-bit dönüşüm süresi
 
-  float ntcResistance = R_EQUIVALENT * ((1023.0 / rawADC) - 1.0);
-  float steinhart = ntcResistance / ROOM_RESISTANCE;
-  steinhart = log(steinhart);
-  steinhart /= B_COEFFICIENT;
-  steinhart += 1.0 / ROOM_TEMP;
-  steinhart = 1.0 / steinhart;
+  // 1. Sensör Okuma
+  float raw1 = sensors.getTempCByIndex(0);
+  if (raw1 != DEVICE_DISCONNECTED_C && raw1 > -100.0 && raw1 != 85.0) {
+    t1 = raw1 + atof(temp_offset);
+  } else {
+    t1 = -999.0;
+  }
 
-  float offsetVal = atof(temp_offset);
-  return (steinhart - 273.15) + offsetVal;
+  // 2. Sensör Okuma (Eğer 2 veya daha fazla sensör takılıysa)
+  if (devCount >= 2) {
+    float raw2 = sensors.getTempCByIndex(1);
+    if (raw2 != DEVICE_DISCONNECTED_C && raw2 > -100.0 && raw2 != 85.0) {
+      t2 = raw2 + atof(temp_offset2);
+    } else {
+      t2 = -999.0;
+    }
+  } else {
+    t2 = -999.0; // İkinci sensör takılı değil
+  }
+
+  return (t1 != -999.0 || t2 != -999.0);
 }
 
-// Telemetri Gönderme
-void sendTelemetryData(float temp) {
+// Telemetri Gönderme (Çift Sensör Destekli)
+void sendTelemetryData(float t1, float t2) {
   WiFiClientSecure client;
   client.setInsecure(); // SSL sertifika kontrolünü atla
 
   HTTPClient http;
   if (http.begin(client, api_url)) {
-    http.setTimeout(15000); // Vercel cold-start gecikmelerini tolere etmek icin 15 saniye bekle
+    http.setTimeout(15000); // Vercel cold-start toleransı
     http.addHeader("Content-Type", "application/json");
     http.addHeader("x-api-key", api_key);
 
-    String payload = "{\"deviceId\":\"" + String(device_id) + "\",\"temperature\":" + String(temp, 2) + "}";
+    String payload = "{\"deviceId\":\"" + String(device_id) + "\"";
+    if (t1 != -999.0) {
+      payload += ",\"temperature\":" + String(t1, 2);
+    }
+    if (t2 != -999.0) {
+      payload += ",\"temperature2\":" + String(t2, 2);
+    }
+    payload += "}";
+
     Serial.print("[HTTP] POST: ");
     Serial.println(payload);
 
     int httpCode = http.POST(payload);
     if (httpCode > 0) {
       Serial.printf("[HTTP] Kod: %d\n", httpCode);
-      // LED flaş uyarısı (başarılı gönderim)
       digitalWrite(ledPin, HIGH);
       delay(80);
       digitalWrite(ledPin, LOW);
@@ -132,12 +158,29 @@ void sendTelemetryData(float temp) {
 
 void setup() {
   Serial.begin(115200);
+  delay(1500); // Seri monitörün bağlanması için bekle
   pinMode(ledPin, OUTPUT);
   pinMode(resetBtnPin, INPUT_PULLUP);
   digitalWrite(ledPin, HIGH); // LED sönük
 
-  delay(100);
-  Serial.println("\n=== Glacio Baslatiliyor ===");
+  Serial.println("\n=== Glacio Baslatiliyor (DS18B20) ===");
+
+  // DS18B20 Sensörlerini Başlat
+  sensors.begin();
+  int devCount = sensors.getDeviceCount();
+  Serial.printf("[SENSOR] Baslangicta Algilanan DS18B20: %d adet\n", devCount);
+  
+  for (int i = 0; i < devCount; i++) {
+    DeviceAddress sensorAddr;
+    if (sensors.getAddress(sensorAddr, i)) {
+      Serial.printf("[SENSOR] Sensor #%d ROM Adresi: ", i + 1);
+      for (uint8_t b = 0; b < 8; b++) {
+        if (sensorAddr[b] < 16) Serial.print("0");
+        Serial.print(sensorAddr[b], HEX);
+      }
+      Serial.println();
+    }
+  }
 
   // 1. Dosya Sisteminden Ayarları Yükle
   loadConfig();
@@ -150,12 +193,14 @@ void setup() {
   WiFiManagerParameter custom_device_id("device_id", "Cihaz ID (Örn: glacio-01)", device_id, 64);
   WiFiManagerParameter custom_api_key("api_key", "API Secret Key", api_key, 128);
   WiFiManagerParameter custom_api_url("api_url", "Vercel API URL", api_url, 128);
-  WiFiManagerParameter custom_temp_offset("temp_offset", "Kalibrasyon Ofseti (°C)", temp_offset, 16);
+  WiFiManagerParameter custom_temp_offset("temp_offset", "Kalibrasyon Ofseti 1 (°C)", temp_offset, 16);
+  WiFiManagerParameter custom_temp_offset2("temp_offset2", "Kalibrasyon Ofseti 2 (°C)", temp_offset2, 16);
 
   wm.addParameter(&custom_device_id);
   wm.addParameter(&custom_api_key);
   wm.addParameter(&custom_api_url);
   wm.addParameter(&custom_temp_offset);
+  wm.addParameter(&custom_temp_offset2);
 
   // Eğer ağa bağlanamazsa 'Glacio-Setup' yayını başlatır ve web portalını açar
   wm.setConfigPortalTimeout(180); // 3 dakika işlem yapılmazsa yeniden dener
@@ -173,6 +218,7 @@ void setup() {
     strcpy(api_key, custom_api_key.getValue());
     strcpy(api_url, custom_api_url.getValue());
     strcpy(temp_offset, custom_temp_offset.getValue());
+    strcpy(temp_offset2, custom_temp_offset2.getValue());
     
     Serial.println("\n[AYARLAR] Portal'dan gelen yeni degerler:");
     Serial.print("Device ID: "); Serial.println(device_id);
@@ -201,7 +247,6 @@ void loop() {
   ArduinoOTA.handle();
 
   // FLASH Butonu Kontrolü (D3 / GPIO 0):
-  // 3 saniye basılı tutulursa ayarları sıfırlar ve tekrar kurulum (AP) moduna geçer
   if (digitalRead(resetBtnPin) == LOW) {
     delay(100);
     int holdCount = 0;
@@ -230,11 +275,18 @@ void loop() {
   // Telemetri Gönderimi (millis zamanlayıcı)
   if (millis() - lastPostTime >= POST_INTERVAL) {
     lastPostTime = millis();
-    float temp = readTemperature();
+    float t1 = -999.0;
+    float t2 = -999.0;
 
-    if (temp != -999.0) {
-      Serial.printf("[SENSOR] Sicaklik: %.1f °C\n", temp);
-      sendTelemetryData(temp);
+    if (readTemperatures(t1, t2)) {
+      if (t1 != -999.0 && t2 != -999.0) {
+        Serial.printf("[SENSOR] Sensor 1: %.1f °C | Sensor 2: %.1f °C\n", t1, t2);
+      } else if (t1 != -999.0) {
+        Serial.printf("[SENSOR] Sensor 1: %.1f °C (Sensor 2 yok)\n", t1);
+      } else {
+        Serial.printf("[SENSOR] Sensor 2: %.1f °C (Sensor 1 yok)\n", t2);
+      }
+      sendTelemetryData(t1, t2);
     } else {
       Serial.println("[SENSOR] Okuma hatasi!");
     }
