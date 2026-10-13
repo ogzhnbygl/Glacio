@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { deviceId, temperature, temperature2 } = body;
+    const { deviceId, temperature, temperature2, batteryVoltage, batteryPercentage } = body;
 
     if (!deviceId || typeof temperature !== 'number') {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
@@ -45,12 +45,20 @@ export async function POST(req: NextRequest) {
       deviceId,
       temperature,
       ...(typeof temperature2 === 'number' ? { temperature2 } : {}),
+      ...(typeof batteryVoltage === 'number' ? { batteryVoltage } : {}),
+      ...(typeof batteryPercentage === 'number' ? { batteryPercentage } : {}),
       timestamp: new Date()
     });
 
-    // 2. Update device's last seen time and status
+    // 2. Update device's last seen time, status, and battery info
     device.lastSeen = new Date();
     device.isOnline = true;
+    if (typeof batteryVoltage === 'number') {
+      device.batteryVoltage = batteryVoltage;
+    }
+    if (typeof batteryPercentage === 'number') {
+      device.batteryPercentage = batteryPercentage;
+    }
     await device.save();
 
     // TODO: Faz 2 - Sıcaklık limitleri dışında ise Telegram botu ile bildirim gönder

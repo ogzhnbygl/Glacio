@@ -15,11 +15,13 @@ char api_key[128]    = "glacio-super-secret-key-2026";
 char api_url[128]    = "https://glacio.vercel.app/api/telemetry";
 char temp_offset[16]  = "0.0";
 char temp_offset2[16] = "0.0";
+char bat_ratio[16]    = "0.00440"; // R1=100k, R2=100k kalibrasyon katsayısı
 
 bool shouldSaveConfig = false;
 
 // Pin Tanımları
 #define ONE_WIRE_BUS 4       // DS18B20 Data pini (D2 = GPIO 4) - Her iki sensör de bu pine paralel bağlanır!
+#define BATTERY_PIN  A0      // 18650 Pil gerilim bölücü giriş pini (A0)
 const int ledPin       = 2;  // Dahili mavi LED (GPIO 2 / D4)
 const int resetBtnPin  = 0;  // FLASH Butonu (GPIO 0) - Ayarları sıfırlayıp AP moduna geçmek için
 
@@ -56,6 +58,7 @@ void loadConfig() {
           strcpy(api_url, json["api_url"] | api_url);
           strcpy(temp_offset, json["temp_offset"] | temp_offset);
           strcpy(temp_offset2, json["temp_offset2"] | temp_offset2);
+          strcpy(bat_ratio, json["bat_ratio"] | bat_ratio);
           Serial.println("[FS] Kayitli ayarlar yuklendi.");
         }
       }
@@ -73,6 +76,7 @@ void saveConfig() {
   json["api_url"]      = api_url;
   json["temp_offset"]  = temp_offset;
   json["temp_offset2"] = temp_offset2;
+  json["bat_ratio"]    = bat_ratio;
 
   File configFile = LittleFS.open("/config.json", "w");
   if (configFile) {
@@ -120,8 +124,29 @@ bool readTemperatures(float &t1, float &t2) {
   return (t1 != -999.0 || t2 != -999.0);
 }
 
-// Telemetri Gönderme (Çift Sensör Destekli)
-void sendTelemetryData(float t1, float t2) {
+// Pil Voltajı Okuma (A0)
+float readBatteryVoltage() {
+  int rawTotal = 0;
+  for (int i = 0; i < 10; i++) {
+    rawTotal += analogRead(BATTERY_PIN);
+    delay(5);
+  }
+  float rawAverage = rawTotal / 10.0;
+  float ratio = atof(bat_ratio);
+  if (ratio <= 0.0) ratio = 0.00440;
+  return rawAverage * ratio;
+}
+
+// 18650 Pil Yüzdesi Hesaplama (4.20V = %100, 3.30V = %0)
+int calculateBatteryPercentage(float voltage) {
+  if (voltage >= 4.20) return 100;
+  if (voltage <= 3.30) return 0;
+  int percentage = (int)(((voltage - 3.30) / (4.20 - 3.30)) * 100);
+  return constrain(percentage, 0, 100);
+}
+
+// Telemetri Gönderme (Çift Sensör ve Pil Destekli)
+void sendTelemetryData(float t1, float t2, float vBat, int batPercent) {
   WiFiClientSecure client;
   client.setInsecure(); // SSL sertifika kontrolünü atla
 
@@ -138,6 +163,8 @@ void sendTelemetryData(float t1, float t2) {
     if (t2 != -999.0) {
       payload += ",\"temperature2\":" + String(t2, 2);
     }
+    payload += ",\"batteryVoltage\":" + String(vBat, 2);
+    payload += ",\"batteryPercentage\":" + String(batPercent);
     payload += "}";
 
     Serial.print("[HTTP] POST: ");
@@ -195,12 +222,14 @@ void setup() {
   WiFiManagerParameter custom_api_url("api_url", "Vercel API URL", api_url, 128);
   WiFiManagerParameter custom_temp_offset("temp_offset", "Kalibrasyon Ofseti 1 (°C)", temp_offset, 16);
   WiFiManagerParameter custom_temp_offset2("temp_offset2", "Kalibrasyon Ofseti 2 (°C)", temp_offset2, 16);
+  WiFiManagerParameter custom_bat_ratio("bat_ratio", "Pil Katsayisi (Orn: 0.00440)", bat_ratio, 16);
 
   wm.addParameter(&custom_device_id);
   wm.addParameter(&custom_api_key);
   wm.addParameter(&custom_api_url);
   wm.addParameter(&custom_temp_offset);
   wm.addParameter(&custom_temp_offset2);
+  wm.addParameter(&custom_bat_ratio);
 
   // Eğer ağa bağlanamazsa 'Glacio-Setup' yayını başlatır ve web portalını açar
   wm.setConfigPortalTimeout(180); // 3 dakika işlem yapılmazsa yeniden dener
@@ -219,6 +248,7 @@ void setup() {
     strcpy(api_url, custom_api_url.getValue());
     strcpy(temp_offset, custom_temp_offset.getValue());
     strcpy(temp_offset2, custom_temp_offset2.getValue());
+    strcpy(bat_ratio, custom_bat_ratio.getValue());
     
     Serial.println("\n[AYARLAR] Portal'dan gelen yeni degerler:");
     Serial.print("Device ID: "); Serial.println(device_id);
@@ -278,7 +308,14 @@ void loop() {
     float t1 = -999.0;
     float t2 = -999.0;
 
-    if (readTemperatures(t1, t2)) {
+    readTemperatures(t1, t2);
+
+    // 18650 Pil Ölçümü
+    float vBat = readBatteryVoltage();
+    int batPercent = calculateBatteryPercentage(vBat);
+    Serial.printf("[BATTERY] Voltaj: %.2f V | Pil: %%%d (Ham ADC: %d)\n", vBat, batPercent, analogRead(BATTERY_PIN));
+
+    if (t1 != -999.0 || t2 != -999.0) {
       if (t1 != -999.0 && t2 != -999.0) {
         Serial.printf("[SENSOR] Sensor 1: %.1f °C | Sensor 2: %.1f °C\n", t1, t2);
       } else if (t1 != -999.0) {
@@ -286,9 +323,9 @@ void loop() {
       } else {
         Serial.printf("[SENSOR] Sensor 2: %.1f °C (Sensor 1 yok)\n", t2);
       }
-      sendTelemetryData(t1, t2);
+      sendTelemetryData(t1, t2, vBat, batPercent);
     } else {
-      Serial.println("[SENSOR] Okuma hatasi!");
+      Serial.println("[SENSOR] Sicaklik okuma hatasi! (Pil verisi gonderilmedi)");
     }
   }
 

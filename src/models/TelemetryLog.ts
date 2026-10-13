@@ -4,6 +4,8 @@ export interface ITelemetryLog extends mongoose.Document {
   deviceId: string;
   temperature: number;
   temperature2?: number;
+  batteryVoltage?: number;
+  batteryPercentage?: number;
   timestamp: Date;
 }
 
@@ -11,6 +13,8 @@ const TelemetryLogSchema = new mongoose.Schema<ITelemetryLog>({
   deviceId: { type: String, required: true },
   temperature: { type: Number, required: true },
   temperature2: { type: Number },
+  batteryVoltage: { type: Number },
+  batteryPercentage: { type: Number },
   timestamp: { type: Date, default: Date.now }
 }, {
   timeseries: {

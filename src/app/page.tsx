@@ -1,7 +1,7 @@
 import dbConnect from "@/lib/mongodb";
 import Device from "@/models/Device";
 import TelemetryLog from "@/models/TelemetryLog";
-import { Thermometer, Activity, Clock, Server, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Thermometer, Activity, Clock, Server, AlertTriangle, ShieldCheck, Battery } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import Link from 'next/link';
@@ -80,6 +80,8 @@ export default async function Home() {
         _id: device._id.toString(),
         currentTemp: latestLog ? latestLog.temperature : null,
         currentTemp2: latestLog ? latestLog.temperature2 : null,
+        batteryVoltage: latestLog?.batteryVoltage ?? device.batteryVoltage ?? null,
+        batteryPercentage: latestLog?.batteryPercentage ?? device.batteryPercentage ?? null,
         isActuallyOnline: isOnline
       };
   }));
@@ -146,12 +148,26 @@ export default async function Home() {
                     )}
                   </div>
                   
-                  <div className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
-                    device.isActuallyOnline 
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                      : 'bg-slate-800 text-slate-400 border-slate-700'
-                  }`}>
-                    {device.isActuallyOnline ? 'Çevrimiçi' : 'Çevrimdışı'}
+                  <div className="flex items-center gap-2">
+                    {device.batteryPercentage !== null && device.batteryPercentage !== undefined && (
+                      <div className={`px-2 py-0.5 rounded-full text-xs font-medium border flex items-center gap-1 ${
+                        device.batteryPercentage > 50 
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                          : device.batteryPercentage > 20
+                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                          : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                      }`} title={`Pil: %${device.batteryPercentage}${device.batteryVoltage !== null && device.batteryVoltage !== undefined ? ` (${device.batteryVoltage.toFixed(2)}V)` : ''}`}>
+                        <Battery className="w-3.5 h-3.5" />
+                        <span>%{device.batteryPercentage}</span>
+                      </div>
+                    )}
+                    <div className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
+                      device.isActuallyOnline 
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}>
+                      {device.isActuallyOnline ? 'Çevrimiçi' : 'Çevrimdışı'}
+                    </div>
                   </div>
                 </div>
 
@@ -217,6 +233,12 @@ export default async function Home() {
                       <Clock className="w-3.5 h-3.5 text-cyan-500" />
                       {formatDistanceToNow(new Date(device.lastSeen), { addSuffix: true, locale: tr })}
                     </div>
+                    {device.batteryVoltage !== null && device.batteryVoltage !== undefined && (
+                      <div className="text-slate-500 text-xs mt-1 flex items-center gap-1">
+                        <Battery className="w-3 h-3 text-cyan-400" />
+                        <span>{device.batteryVoltage.toFixed(2)} V</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </Link>

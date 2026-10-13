@@ -2,7 +2,7 @@ import dbConnect from "@/lib/mongodb";
 import Device from "@/models/Device";
 import TelemetryLog from "@/models/TelemetryLog";
 import TemperatureChart from "@/components/TemperatureChart";
-import { ArrowLeft, Thermometer, Clock, Activity, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Thermometer, Clock, Activity, AlertTriangle, Battery } from "lucide-react";
 import Link from "next/link";
 import DeviceSettingsModal from "@/components/DeviceSettingsModal";
 import { formatDistanceToNow } from "date-fns";
@@ -49,6 +49,8 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
     
   const currentTemp = logs.length > 0 ? logs[0].temperature : null;
   const currentTemp2 = logs.length > 0 ? logs[0].temperature2 : null;
+  const currentBatteryVoltage = logs.length > 0 && typeof logs[0].batteryVoltage === 'number' ? logs[0].batteryVoltage : (device.batteryVoltage ?? null);
+  const currentBatteryPercentage = logs.length > 0 && typeof logs[0].batteryPercentage === 'number' ? logs[0].batteryPercentage : (device.batteryPercentage ?? null);
   const isOnline = logs.length > 0 ? new Date().getTime() - new Date(device.lastSeen).getTime() < 5 * 60 * 1000 : false;
   
   const isDual = device.cabinetType === 'dual_plus4_minus20';
@@ -73,10 +75,27 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
               <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white">
                 {device.name}
               </h1>
-              <div className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
-                isOnline ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'
-              }`}>
-                {isOnline ? 'Çevrimiçi' : 'Çevrimdışı'}
+              <div className="flex items-center gap-2">
+                {currentBatteryPercentage !== null && (
+                  <div className={`px-2.5 py-1 rounded-full text-xs font-medium border flex items-center gap-1.5 ${
+                    currentBatteryPercentage > 50 
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                      : currentBatteryPercentage > 20
+                      ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                      : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                  }`} title={currentBatteryVoltage !== null ? `${currentBatteryVoltage.toFixed(2)} V` : undefined}>
+                    <Battery className="w-3.5 h-3.5" />
+                    <span>%{currentBatteryPercentage}</span>
+                    {currentBatteryVoltage !== null && (
+                      <span className="opacity-75 font-mono">({currentBatteryVoltage.toFixed(2)}V)</span>
+                    )}
+                  </div>
+                )}
+                <div className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
+                  isOnline ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'
+                }`}>
+                  {isOnline ? 'Çevrimiçi' : 'Çevrimdışı'}
+                </div>
               </div>
             </div>
             <p className="text-slate-400 font-mono text-sm">ID: {device.deviceId}</p>
@@ -141,6 +160,26 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
                   {formatDistanceToNow(new Date(device.lastSeen), { addSuffix: true, locale: tr })}
                 </span>
               </div>
+              {currentBatteryPercentage !== null && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 text-sm flex items-center gap-1.5">
+                    <Battery className="w-4 h-4 text-cyan-500" />
+                    Pil Seviyesi
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                      currentBatteryPercentage > 50 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                      currentBatteryPercentage > 20 ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                      'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                    }`}>
+                      %{currentBatteryPercentage}
+                    </span>
+                    {currentBatteryVoltage !== null && (
+                      <span className="text-slate-400 text-xs font-mono">{currentBatteryVoltage.toFixed(2)} V</span>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-sm">Kayıt Tarihi</span>
                 <span className="text-white text-sm font-medium">
