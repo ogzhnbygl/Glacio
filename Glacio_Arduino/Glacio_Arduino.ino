@@ -5,31 +5,38 @@
 #include <WiFiClientSecure.h>
 #include <WiFiManager.h>
 #include <ArduinoJson.h>
-#include <ArduinoOTA.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
 // --- Varsayılan Ayarlar (Kullanıcı arayüzünden güncellenebilir) ---
-char device_id[64]   = "glacio-node-01";
-char api_key[128]    = "glacio-super-secret-key-2026";
-char api_url[128]    = "https://glacio.vercel.app/api/telemetry";
+char device_id[64]    = "glacio-node-01";
+char api_key[128]     = "glacio-super-secret-key-2026";
+char api_url[128]     = "https://glacio.vercel.app/api/telemetry";
 char temp_offset[16]  = "0.0";
 char temp_offset2[16] = "0.0";
-char bat_ratio[16]    = "0.006986"; // 3.926V / 562 ADC kalibrasyon katsayısı
+char bat_ratio[16]    = "0.007159"; // 4.059V / 567 ADC multimetre kalibrasyon katsayısı
 
 bool shouldSaveConfig = false;
 
 // Pin Tanımları
 #define ONE_WIRE_BUS 4       // DS18B20 Data pini (D2 = GPIO 4) - Her iki sensör de bu pine paralel bağlanır!
 #define BATTERY_PIN  A0      // 18650 Pil gerilim bölücü giriş pini (A0)
-const int ledPin       = 2;  // Dahili mavi LED (GPIO 2 / D4)
-const int resetBtnPin  = 0;  // FLASH Butonu (GPIO 0) - Ayarları sıfırlayıp AP moduna geçmek için
+const int ledPin      = 2;   // Dahili mavi LED (GPIO 2 / D4)
+const int resetBtnPin = 0;   // FLASH Butonu (GPIO 0) - Ayarları sıfırlayıp AP moduna geçmek için
 
-// DS18B20 Sensör Nesneleri
+// DS18B20 Sensör Nesneleri ve Sabit ROM Adresleri
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
+DeviceAddress sensor1Addr;
+DeviceAddress sensor2Addr;
+bool hasSensor1Addr = false;
+bool hasSensor2Addr = false;
 
-// Telnet Sunucusu (Wi-Fi Uzerinden Seri Monitor - Port 23)
+// Pil ölçümü yumuşatma (EMA) ve bağlantı hata sayacı
+float smoothedBatteryVoltage = -1.0f;
+int consecutiveHttpFailures = 0;
+
+// Telnet Sunucusu (Wi-Fi Üzerinden Seri Monitör - Port 23)
 WiFiServer telnetServer(23);
 WiFiClient telnetClient;
 
@@ -80,47 +87,16 @@ void logPrintf(const char *format, ...) {
   }
 }
 
-// Zamanlayıcı
+// Zamanlayıcılar
 unsigned long lastPostTime = 0;
 const unsigned long POST_INTERVAL = 15000; // 15 saniye (Stabil telemetri)
+unsigned long lastWifiReconnectAttempt = 0;
+const unsigned long WIFI_RECONNECT_INTERVAL = 20000; // 20 saniyede bir yeniden bağlanma tetiklemesi
 
 // WiFiManager kaydetme bayrağı
 void saveConfigCallback() {
   Serial.println("[FS] Ayarlar kaydedilecek...");
   shouldSaveConfig = true;
-}
-
-// Flash (LittleFS) üzerinden yapılandırmayı oku
-void loadConfig() {
-  if (LittleFS.begin()) {
-    if (LittleFS.exists("/config.json")) {
-      File configFile = LittleFS.open("/config.json", "r");
-      if (configFile) {
-        size_t size = configFile.size();
-        std::unique_ptr<char[]> buf(new char[size]);
-        configFile.readBytes(buf.get(), size);
-        configFile.close();
-
-        StaticJsonDocument<512> json;
-        DeserializationError error = deserializeJson(json, buf.get());
-        if (!error) {
-          strcpy(device_id, json["device_id"] | device_id);
-          strcpy(api_key, json["api_key"] | api_key);
-          strcpy(api_url, json["api_url"] | api_url);
-          strcpy(temp_offset, json["temp_offset"] | temp_offset);
-          strcpy(temp_offset2, json["temp_offset2"] | temp_offset2);
-          strcpy(bat_ratio, json["bat_ratio"] | bat_ratio);
-          // Eski düşük katsayı (0.00440) kayıtlıysa kalibre edilmiş yeni değere otomatik güncelle
-          if (atof(bat_ratio) < 0.0055) {
-            strcpy(bat_ratio, "0.006986");
-          }
-          Serial.println("[FS] Kayitli ayarlar yuklendi.");
-        }
-      }
-    }
-  } else {
-    Serial.println("[FS] LittleFS baslatilamadi!");
-  }
 }
 
 // Flash (LittleFS) içine yapılandırmayı kaydet
@@ -141,12 +117,88 @@ void saveConfig() {
   }
 }
 
-// Çift Sensör Sıcaklık Okuma Fonksiyonu (DS18B20)
-bool readTemperatures(float &t1, float &t2) {
-  sensors.begin(); // Temassızlık sonrası hattı yeniden tara
-  int devCount = sensors.getDeviceCount();
+// Flash (LittleFS) üzerinden yapılandırmayı güvenli oku
+void loadConfig() {
+  if (LittleFS.begin()) {
+    if (LittleFS.exists("/config.json")) {
+      File configFile = LittleFS.open("/config.json", "r");
+      if (configFile) {
+        StaticJsonDocument<512> json;
+        DeserializationError error = deserializeJson(json, configFile);
+        configFile.close();
 
-  if (devCount == 0) {
+        if (!error) {
+          strlcpy(device_id, json["device_id"] | device_id, sizeof(device_id));
+          strlcpy(api_key, json["api_key"] | api_key, sizeof(api_key));
+          strlcpy(api_url, json["api_url"] | api_url, sizeof(api_url));
+          strlcpy(temp_offset, json["temp_offset"] | temp_offset, sizeof(temp_offset));
+          strlcpy(temp_offset2, json["temp_offset2"] | temp_offset2, sizeof(temp_offset2));
+          strlcpy(bat_ratio, json["bat_ratio"] | bat_ratio, sizeof(bat_ratio));
+
+          // Eski varsayılan katsayılar (0.00440 veya 0.006986) kayıtlıysa yeni 4.059V/567 kalibrasyonuna güncelle
+          float parsedRatio = atof(bat_ratio);
+          if (parsedRatio <= 0.00705f) {
+            strlcpy(bat_ratio, "0.007159", sizeof(bat_ratio));
+            saveConfig();
+            Serial.println("[FS] Pil kalibrasyon katsayisi 0.007159 olarak guncellendi.");
+          }
+          Serial.println("[FS] Kayitli ayarlar yuklendi.");
+        } else {
+          Serial.println("[FS] config.json okunamadi (JSON hatasi)!");
+        }
+      }
+    }
+  } else {
+    Serial.println("[FS] LittleFS baslatilamadi!");
+  }
+}
+
+void printSensorAddress(const DeviceAddress addr) {
+  for (uint8_t b = 0; b < 8; b++) {
+    if (addr[b] < 16) Serial.print("0");
+    Serial.print(addr[b], HEX);
+  }
+}
+
+// Sensörlerin ROM adreslerini keşfet ve sabitle (1. sensör koparsa 2. sensör 1. sıraya kaymasın)
+void discoverSensors() {
+  sensors.begin();
+  sensors.setWaitForConversion(false); // Bloklamayan sıcaklık dönüşümü
+
+  oneWire.reset_search();
+  DeviceAddress addr;
+  while (oneWire.search(addr)) {
+    if (OneWire::crc8(addr, 7) != addr[7]) continue;
+
+    if (!hasSensor1Addr) {
+      if (!hasSensor2Addr || memcmp(addr, sensor2Addr, 8) != 0) {
+        memcpy(sensor1Addr, addr, 8);
+        hasSensor1Addr = true;
+        Serial.print("[SENSOR] Sensor #1 ROM Adresi sabitlendi: ");
+        printSensorAddress(sensor1Addr);
+        Serial.println();
+      }
+    } else if (!hasSensor2Addr && memcmp(addr, sensor1Addr, 8) != 0) {
+      memcpy(sensor2Addr, addr, 8);
+      hasSensor2Addr = true;
+      Serial.print("[SENSOR] Sensor #2 ROM Adresi sabitlendi: ");
+      printSensorAddress(sensor2Addr);
+      Serial.println();
+    }
+  }
+}
+
+bool isValidTempReading(float rawTemp) {
+  return (rawTemp != DEVICE_DISCONNECTED_C && rawTemp > -100.0f && rawTemp != 85.0f);
+}
+
+// Çift Sensör Sıcaklık Okuma Fonksiyonu (Sabit ROM Adresli & Tek Beklemeli)
+bool readTemperatures(float &t1, float &t2) {
+  if (!hasSensor1Addr || !hasSensor2Addr) {
+    discoverSensors();
+  }
+
+  if (!hasSensor1Addr && !hasSensor2Addr) {
     logPrintln("[SENSOR] Sensor bulunamadi (0 adet)! Baglantilari kontrol edin.");
     t1 = -999.0;
     t2 = -999.0;
@@ -154,60 +206,143 @@ bool readTemperatures(float &t1, float &t2) {
   }
 
   sensors.requestTemperatures();
-  delay(800); // 12-bit dönüşüm süresi
 
-  // 1. Sensör Okuma
-  float raw1 = sensors.getTempCByIndex(0);
-  if (raw1 != DEVICE_DISCONNECTED_C && raw1 > -100.0 && raw1 != 85.0) {
-    t1 = raw1 + atof(temp_offset);
+  // 12-bit dönüşüm için ~750ms bekle (Telnet ve Wi-Fi arka planda çalışmaya devam eder)
+  unsigned long waitStart = millis();
+  while (millis() - waitStart < 750) {
+    handleTelnet();
+    delay(10);
+  }
+
+  // 1. Sensör Okuma (Sabit ROM adresi ile)
+  if (hasSensor1Addr) {
+    float raw1 = sensors.getTempC(sensor1Addr);
+    if (isValidTempReading(raw1)) {
+      t1 = raw1 + atof(temp_offset);
+    } else {
+      t1 = -999.0;
+    }
   } else {
     t1 = -999.0;
   }
 
-  // 2. Sensör Okuma (Eğer 2 veya daha fazla sensör takılıysa)
-  if (devCount >= 2) {
-    float raw2 = sensors.getTempCByIndex(1);
-    if (raw2 != DEVICE_DISCONNECTED_C && raw2 > -100.0 && raw2 != 85.0) {
+  // 2. Sensör Okuma (Sabit ROM adresi ile)
+  if (hasSensor2Addr) {
+    float raw2 = sensors.getTempC(sensor2Addr);
+    if (isValidTempReading(raw2)) {
       t2 = raw2 + atof(temp_offset2);
     } else {
       t2 = -999.0;
     }
   } else {
-    t2 = -999.0; // İkinci sensör takılı değil
+    t2 = -999.0;
   }
 
   return (t1 != -999.0 || t2 != -999.0);
 }
 
-// Pil Voltajı Okuma (A0)
-float readBatteryVoltage() {
-  int rawTotal = 0;
-  for (int i = 0; i < 10; i++) {
-    rawTotal += analogRead(BATTERY_PIN);
-    delay(5);
+// Pil Voltajı Okuma (A0) - Gürültü filtreli (Trimmed Mean + EMA)
+float readBatteryVoltage(int &outAvgAdc) {
+  const int SAMPLE_COUNT = 25;
+  int samples[SAMPLE_COUNT];
+
+  for (int i = 0; i < SAMPLE_COUNT; i++) {
+    samples[i] = analogRead(BATTERY_PIN);
+    delay(4);
   }
-  float rawAverage = rawTotal / 10.0;
+
+  // Küçükten büyüğe sırala (Wi-Fi akım sıçramalarından kaynaklı uç değerleri atmak için)
+  for (int i = 0; i < SAMPLE_COUNT - 1; i++) {
+    for (int j = i + 1; j < SAMPLE_COUNT; j++) {
+      if (samples[j] < samples[i]) {
+        int temp = samples[i];
+        samples[i] = samples[j];
+        samples[j] = temp;
+      }
+    }
+  }
+
+  // En düşük 5 ve en yüksek 5 okumayı at, ortadaki 15 okumanın ortalamasını al
+  long trimmedSum = 0;
+  for (int i = 5; i < SAMPLE_COUNT - 5; i++) {
+    trimmedSum += samples[i];
+  }
+  float rawAverage = trimmedSum / 15.0f;
+  outAvgAdc = (int)(rawAverage + 0.5f);
+
   float ratio = atof(bat_ratio);
-  if (ratio <= 0.0055) ratio = 0.006986;
-  return rawAverage * ratio;
+  if (ratio <= 0.0001f) ratio = 0.007159f;
+
+  float instantVoltage = rawAverage * ratio;
+
+  // Şarja takıp çıkarırken büyük voltaj değişimi varsa (>0.08V) hemen yakala, yoksa yumuşat (EMA)
+  if (smoothedBatteryVoltage < 0.0f || abs(instantVoltage - smoothedBatteryVoltage) > 0.08f) {
+    smoothedBatteryVoltage = instantVoltage;
+  } else {
+    smoothedBatteryVoltage = (smoothedBatteryVoltage * 0.65f) + (instantVoltage * 0.35f);
+  }
+
+  return smoothedBatteryVoltage;
 }
 
-// 18650 Pil Yüzdesi Hesaplama (4.20V = %100, 3.30V = %0)
-int calculateBatteryPercentage(float voltage) {
-  if (voltage >= 4.20) return 100;
-  if (voltage <= 3.30) return 0;
-  int percentage = (int)(((voltage - 3.30) / (4.20 - 3.30)) * 100);
-  return constrain(percentage, 0, 100);
+// 18650 Li-Ion Gerçekçi Deşarj Eğrisi ile Yüzde Hesaplama
+// (4.18V+ = %100, 4.06V ≈ %86, 3.85V ≈ %58, 3.70V ≈ %33, 3.30V = %0)
+int calculateBatteryPercentage(float v) {
+  if (v >= 4.18f) return 100;
+  if (v <= 3.30f) return 0;
+
+  // Parçalı doğrusal Li-Ion 18650 eğrisi
+  float pct;
+  if (v >= 4.00f) {
+    // 4.00V (%80) -> 4.18V (%100)
+    pct = 80.0f + ((v - 4.00f) / (4.18f - 4.00f)) * 20.0f;
+  } else if (v >= 3.80f) {
+    // 3.80V (%50) -> 4.00V (%80)
+    pct = 50.0f + ((v - 3.80f) / (4.00f - 3.80f)) * 30.0f;
+  } else if (v >= 3.60f) {
+    // 3.60V (%18) -> 3.80V (%50)
+    pct = 18.0f + ((v - 3.60f) / (3.80f - 3.60f)) * 32.0f;
+  } else {
+    // 3.30V (%0) -> 3.60V (%18)
+    pct = ((v - 3.30f) / (3.60f - 3.30f)) * 18.0f;
+  }
+
+  return constrain((int)(pct + 0.5f), 0, 100);
+}
+
+// Şarj tak/çıkar sonrası askıda kalan Wi-Fi / TCP-IP yığınını tazele
+void recoverWiFiConnection() {
+  logPrintln("[WiFi] Baglanti katmani sifirlaniyor (Self-Healing)...");
+  digitalWrite(ledPin, HIGH);
+  WiFi.disconnect(false);
+  delay(300);
+  WiFi.begin();
+
+  unsigned long startAttempt = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
+    delay(250);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    digitalWrite(ledPin, LOW);
+    logPrint("[WiFi] Yeniden baglandi! IP: ");
+    logPrintln(WiFi.localIP().toString());
+  }
 }
 
 // Telemetri Gönderme (Çift Sensör ve Pil Destekli)
-void sendTelemetryData(float t1, float t2, float vBat, int batPercent) {
+bool sendTelemetryData(float t1, float t2, float vBat, int batPercent) {
   WiFiClientSecure client;
   client.setInsecure(); // SSL sertifika kontrolünü atla
+  client.setTimeout(12000);
 
   HTTPClient http;
+  http.setReuse(false); // Askıda kalan soketleri tekrar kullanma
+
   if (http.begin(client, api_url)) {
-    http.setTimeout(15000); // Vercel cold-start toleransı
+    http.setTimeout(12000); // Vercel cold-start toleransı
     http.addHeader("Content-Type", "application/json");
     http.addHeader("x-api-key", api_key);
 
@@ -226,16 +361,31 @@ void sendTelemetryData(float t1, float t2, float vBat, int batPercent) {
     logPrintln(payload);
 
     int httpCode = http.POST(payload);
+    http.end();
+
     if (httpCode > 0) {
       logPrintf("[HTTP] Kod: %d\n", httpCode);
       digitalWrite(ledPin, HIGH);
       delay(80);
       digitalWrite(ledPin, LOW);
+      consecutiveHttpFailures = 0;
+      return true;
     } else {
-      logPrintf("[HTTP] Hata: %s\n", http.errorToString(httpCode).c_str());
+      consecutiveHttpFailures++;
+      logPrintf("[HTTP] Hata (%d/5): %s\n", consecutiveHttpFailures, http.errorToString(httpCode).c_str());
+
+      // Şarja takıp çıkarınca Wi-Fi bağlı görünse bile TCP/DNS kilitlenirse otomatik kurtar
+      if (consecutiveHttpFailures == 2 || consecutiveHttpFailures == 4) {
+        recoverWiFiConnection();
+      } else if (consecutiveHttpFailures >= 5) {
+        logPrintln("[WATCHDOG] Ust uste 5 HTTP hatasi! Cihaz otomatik yeniden baslatiliyor...");
+        delay(500);
+        ESP.restart();
+      }
+      return false;
     }
-    http.end();
   }
+  return false;
 }
 
 void setup() {
@@ -247,25 +397,16 @@ void setup() {
 
   Serial.println("\n=== Glacio Baslatiliyor (DS18B20) ===");
 
-  // DS18B20 Sensörlerini Başlat
-  sensors.begin();
-  int devCount = sensors.getDeviceCount();
-  Serial.printf("[SENSOR] Baslangicta Algilanan DS18B20: %d adet\n", devCount);
-  
-  for (int i = 0; i < devCount; i++) {
-    DeviceAddress sensorAddr;
-    if (sensors.getAddress(sensorAddr, i)) {
-      Serial.printf("[SENSOR] Sensor #%d ROM Adresi: ", i + 1);
-      for (uint8_t b = 0; b < 8; b++) {
-        if (sensorAddr[b] < 16) Serial.print("0");
-        Serial.print(sensorAddr[b], HEX);
-      }
-      Serial.println();
-    }
-  }
+  // DS18B20 Sensörlerini Başlat ve ROM Adreslerini Kaydet
+  discoverSensors();
+  Serial.printf("[SENSOR] Baslangicta Algilanan DS18B20: %d adet\n",
+                (hasSensor1Addr ? 1 : 0) + (hasSensor2Addr ? 1 : 0));
 
   // 1. Dosya Sisteminden Ayarları Yükle
   loadConfig();
+
+  // Şarj geçişlerinde voltaj dalgalanmasına karşı Wi-Fi uyku modunu kapat
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
 
   // 2. WiFiManager Kurulumu
   WiFiManager wm;
@@ -277,7 +418,7 @@ void setup() {
   WiFiManagerParameter custom_api_url("api_url", "Vercel API URL", api_url, 128);
   WiFiManagerParameter custom_temp_offset("temp_offset", "Kalibrasyon Ofseti 1 (°C)", temp_offset, 16);
   WiFiManagerParameter custom_temp_offset2("temp_offset2", "Kalibrasyon Ofseti 2 (°C)", temp_offset2, 16);
-  WiFiManagerParameter custom_bat_ratio("bat_ratio", "Pil Katsayisi (Orn: 0.006986)", bat_ratio, 16);
+  WiFiManagerParameter custom_bat_ratio("bat_ratio", "Pil Katsayisi (Orn: 0.007159)", bat_ratio, 16);
 
   wm.addParameter(&custom_device_id);
   wm.addParameter(&custom_api_key);
@@ -296,19 +437,22 @@ void setup() {
     ESP.restart();
   }
 
-  // Kullanıcı yeni ayarları girdiyse güncelle ve Flash'a yaz
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
+
+  // Kullanıcı yeni ayarları girdiyse güvenli şekilde güncelle ve Flash'a yaz
   if (shouldSaveConfig) {
-    strcpy(device_id, custom_device_id.getValue());
-    strcpy(api_key, custom_api_key.getValue());
-    strcpy(api_url, custom_api_url.getValue());
-    strcpy(temp_offset, custom_temp_offset.getValue());
-    strcpy(temp_offset2, custom_temp_offset2.getValue());
-    strcpy(bat_ratio, custom_bat_ratio.getValue());
-    
+    strlcpy(device_id, custom_device_id.getValue(), sizeof(device_id));
+    strlcpy(api_key, custom_api_key.getValue(), sizeof(api_key));
+    strlcpy(api_url, custom_api_url.getValue(), sizeof(api_url));
+    strlcpy(temp_offset, custom_temp_offset.getValue(), sizeof(temp_offset));
+    strlcpy(temp_offset2, custom_temp_offset2.getValue(), sizeof(temp_offset2));
+    strlcpy(bat_ratio, custom_bat_ratio.getValue(), sizeof(bat_ratio));
+
     Serial.println("\n[AYARLAR] Portal'dan gelen yeni degerler:");
-    Serial.print("Device ID: "); Serial.println(device_id);
-    Serial.print("API Key: "); Serial.println(api_key);
-    
+    Serial.print("Device ID: ");
+    Serial.println(device_id);
+
     saveConfig();
   }
 
@@ -316,38 +460,13 @@ void setup() {
   Serial.println("[WiFi] Baglandi! IP:");
   Serial.println(WiFi.localIP());
 
-  // 3. OTA (Kablosuz Güncelleme) Başlatma
-  ArduinoOTA.setHostname(device_id);
-  ArduinoOTA.onStart([]() {
-    Serial.println("\n[OTA] Kablosuz guncelleme basladi...");
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\n[OTA] Guncelleme basariyla tamamlandi! Cihaz yeniden baslatiliyor...");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("[OTA] Yukleme: %%%u\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("\n[OTA] Hata [%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Yetkilendirme Hatasi");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Baslatma Hatasi");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Baglanti Hatasi");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Veri Alma Hatasi");
-    else if (error == OTA_END_ERROR) Serial.println("Bitis Hatasi");
-  });
-  ArduinoOTA.begin();
-  Serial.printf("[OTA] Hazir! Ag adi (Hostname): %s\n", device_id);
-
-  // 4. Telnet Sunucusunu Baslat (Port 23)
+  // 3. Telnet Sunucusunu Başlat (Port 23)
   telnetServer.begin();
   telnetServer.setNoDelay(true);
   Serial.println("[TELNET] Sunucu baslatildi! Port: 23");
 }
 
 void loop() {
-  // OTA isteklerini dinle (Wi-Fi üzerinden kod atmak için)
-  ArduinoOTA.handle();
-
   // Telnet istemcilerini dinle
   handleTelnet();
 
@@ -371,10 +490,15 @@ void loop() {
   // Wi-Fi Kontrolü
   if (WiFi.status() != WL_CONNECTED) {
     digitalWrite(ledPin, HIGH);
-    Serial.println("[WiFi] Koptu, baglaniliyor...");
-    WiFi.reconnect();
-    delay(5000);
+    if (millis() - lastWifiReconnectAttempt >= WIFI_RECONNECT_INTERVAL) {
+      lastWifiReconnectAttempt = millis();
+      Serial.println("[WiFi] Baglanti koptu, yeniden baglaniliyor...");
+      WiFi.reconnect();
+    }
+    delay(100);
     return;
+  } else if (digitalRead(ledPin) == HIGH) {
+    digitalWrite(ledPin, LOW); // Bağlantı geri geldiğinde LED'i tekrar yak
   }
 
   // Telemetri Gönderimi (millis zamanlayıcı)
@@ -385,23 +509,24 @@ void loop() {
 
     readTemperatures(t1, t2);
 
-    // 18650 Pil Ölçümü
-    float vBat = readBatteryVoltage();
+    // 18650 Pil Ölçümü (Gürültü Filtreli & 4.059V/567 Kalibreli)
+    int avgAdc = 0;
+    float vBat = readBatteryVoltage(avgAdc);
     int batPercent = calculateBatteryPercentage(vBat);
-    logPrintf("[BATTERY] Voltaj: %.2f V | Pil: %%%d (Ham ADC: %d)\n", vBat, batPercent, analogRead(BATTERY_PIN));
+    logPrintf("[BATTERY] Voltaj: %.2f V | Pil: %%%d (Filtreli ADC: %d)\n", vBat, batPercent, avgAdc);
 
-    if (t1 != -999.0 || t2 != -999.0) {
-      if (t1 != -999.0 && t2 != -999.0) {
-        logPrintf("[SENSOR] Sensor 1: %.1f °C | Sensor 2: %.1f °C\n", t1, t2);
-      } else if (t1 != -999.0) {
-        logPrintf("[SENSOR] Sensor 1: %.1f °C (Sensor 2 yok)\n", t1);
-      } else {
-        logPrintf("[SENSOR] Sensor 2: %.1f °C (Sensor 1 yok)\n", t2);
-      }
-      sendTelemetryData(t1, t2, vBat, batPercent);
+    if (t1 != -999.0 && t2 != -999.0) {
+      logPrintf("[SENSOR] Sensor 1: %.1f °C | Sensor 2: %.1f °C\n", t1, t2);
+    } else if (t1 != -999.0) {
+      logPrintf("[SENSOR] Sensor 1: %.1f °C (Sensor 2 yok/okunamadi)\n", t1);
+    } else if (t2 != -999.0) {
+      logPrintf("[SENSOR] Sensor 2: %.1f °C (Sensor 1 yok/okunamadi)\n", t2);
     } else {
-      logPrintln("[SENSOR] Sicaklik okuma hatasi! (Pil verisi gonderilmedi)");
+      logPrintln("[SENSOR] Sicaklik sensorleri okunamadi! Sadece pil ve durum bilgisi gonderiliyor.");
     }
+
+    // Sensörlerde hata olsa bile cihazın çevrimiçi ve pil bilgisini sunucuya gönder
+    sendTelemetryData(t1, t2, vBat, batPercent);
   }
 
   delay(10);

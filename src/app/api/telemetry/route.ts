@@ -24,8 +24,10 @@ export async function POST(req: NextRequest) {
 
     const hasTemp1 = typeof temperature === 'number' && !Number.isNaN(temperature);
     const hasTemp2 = typeof temperature2 === 'number' && !Number.isNaN(temperature2);
+    const hasBatVoltage = typeof batteryVoltage === 'number' && !Number.isNaN(batteryVoltage);
+    const hasBatPercent = typeof batteryPercentage === 'number' && !Number.isNaN(batteryPercentage);
 
-    if (!deviceId || (!hasTemp1 && !hasTemp2)) {
+    if (!deviceId || (!hasTemp1 && !hasTemp2 && !hasBatVoltage && !hasBatPercent)) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
@@ -48,8 +50,8 @@ export async function POST(req: NextRequest) {
       deviceId,
       ...(hasTemp1 ? { temperature } : {}),
       ...(hasTemp2 ? { temperature2 } : {}),
-      ...(typeof batteryVoltage === 'number' && !Number.isNaN(batteryVoltage) ? { batteryVoltage } : {}),
-      ...(typeof batteryPercentage === 'number' && !Number.isNaN(batteryPercentage) ? { batteryPercentage } : {}),
+      ...(hasBatVoltage ? { batteryVoltage } : {}),
+      ...(hasBatPercent ? { batteryPercentage } : {}),
       timestamp: new Date()
     });
 
@@ -58,10 +60,10 @@ export async function POST(req: NextRequest) {
     device.isOnline = true;
     device.lastTemp = hasTemp1 ? temperature : undefined;
     device.lastTemp2 = hasTemp2 ? temperature2 : undefined;
-    if (typeof batteryVoltage === 'number' && !Number.isNaN(batteryVoltage)) {
+    if (hasBatVoltage) {
       device.batteryVoltage = batteryVoltage;
     }
-    if (typeof batteryPercentage === 'number' && !Number.isNaN(batteryPercentage)) {
+    if (hasBatPercent) {
       device.batteryPercentage = batteryPercentage;
     }
     await device.save();
