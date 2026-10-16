@@ -6,11 +6,11 @@ import { useRouter } from "next/navigation";
 
 export default function DeviceSettingsModal({ device }: { device: any }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [name, setName] = useState(device.name);
-  const [minTemp, setMinTemp] = useState(device.minTemp);
-  const [maxTemp, setMaxTemp] = useState(device.maxTemp);
-  const [minTemp2, setMinTemp2] = useState(device.minTemp2 || -22);
-  const [maxTemp2, setMaxTemp2] = useState(device.maxTemp2 || -16);
+  const [name, setName] = useState<string>(device.name || "");
+  const [minTemp, setMinTemp] = useState<string>(String(device.minTemp ?? 2));
+  const [maxTemp, setMaxTemp] = useState<string>(String(device.maxTemp ?? 8));
+  const [minTemp2, setMinTemp2] = useState<string>(String(device.minTemp2 ?? -22));
+  const [maxTemp2, setMaxTemp2] = useState<string>(String(device.maxTemp2 ?? -16));
   const [cabinetType, setCabinetType] = useState(device.cabinetType || 'unconfigured');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -21,16 +21,46 @@ export default function DeviceSettingsModal({ device }: { device: any }) {
     setLoading(true);
     setError("");
 
+    const parsedMinTemp = parseFloat(minTemp);
+    const parsedMaxTemp = parseFloat(maxTemp);
+    const parsedMinTemp2 = parseFloat(minTemp2);
+    const parsedMaxTemp2 = parseFloat(maxTemp2);
+
+    if (Number.isNaN(parsedMinTemp) || Number.isNaN(parsedMaxTemp)) {
+      setError("Lütfen geçerli sıcaklık değerleri girin.");
+      setLoading(false);
+      return;
+    }
+
+    if (parsedMinTemp >= parsedMaxTemp) {
+      setError("Minimum sıcaklık, maksimum sıcaklıktan küçük olmalıdır.");
+      setLoading(false);
+      return;
+    }
+
+    if (cabinetType === 'dual_plus4_minus20') {
+      if (Number.isNaN(parsedMinTemp2) || Number.isNaN(parsedMaxTemp2)) {
+        setError("Lütfen 2. sensör için geçerli sıcaklık değerleri girin.");
+        setLoading(false);
+        return;
+      }
+      if (parsedMinTemp2 >= parsedMaxTemp2) {
+        setError("2. sensör minimum sıcaklığı, maksimum sıcaklığından küçük olmalıdır.");
+        setLoading(false);
+        return;
+      }
+    }
+
     try {
       const res = await fetch(`/api/devices/${device.deviceId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           name, 
-          minTemp, 
-          maxTemp, 
+          minTemp: parsedMinTemp, 
+          maxTemp: parsedMaxTemp, 
           cabinetType,
-          ...(cabinetType === 'dual_plus4_minus20' ? { minTemp2, maxTemp2 } : {}) 
+          ...(cabinetType === 'dual_plus4_minus20' ? { minTemp2: parsedMinTemp2, maxTemp2: parsedMaxTemp2 } : {}) 
         }),
       });
 
@@ -114,7 +144,7 @@ export default function DeviceSettingsModal({ device }: { device: any }) {
                     type="number"
                     step="0.1"
                     value={minTemp}
-                    onChange={(e) => setMinTemp(parseFloat(e.target.value))}
+                    onChange={(e) => setMinTemp(e.target.value)}
                     className="block w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
                     required
                   />
@@ -125,7 +155,7 @@ export default function DeviceSettingsModal({ device }: { device: any }) {
                     type="number"
                     step="0.1"
                     value={maxTemp}
-                    onChange={(e) => setMaxTemp(parseFloat(e.target.value))}
+                    onChange={(e) => setMaxTemp(e.target.value)}
                     className="block w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
                     required
                   />
@@ -143,7 +173,7 @@ export default function DeviceSettingsModal({ device }: { device: any }) {
                       type="number"
                       step="0.1"
                       value={minTemp2}
-                      onChange={(e) => setMinTemp2(parseFloat(e.target.value))}
+                      onChange={(e) => setMinTemp2(e.target.value)}
                       className="block w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
                       required
                     />
@@ -154,7 +184,7 @@ export default function DeviceSettingsModal({ device }: { device: any }) {
                       type="number"
                       step="0.1"
                       value={maxTemp2}
-                      onChange={(e) => setMaxTemp2(parseFloat(e.target.value))}
+                      onChange={(e) => setMaxTemp2(e.target.value)}
                       className="block w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
                       required
                     />

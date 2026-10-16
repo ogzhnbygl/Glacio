@@ -22,7 +22,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { deviceId, temperature, temperature2, batteryVoltage, batteryPercentage } = body;
 
-    if (!deviceId || typeof temperature !== 'number') {
+    const hasTemp1 = typeof temperature === 'number' && !Number.isNaN(temperature);
+    const hasTemp2 = typeof temperature2 === 'number' && !Number.isNaN(temperature2);
+
+    if (!deviceId || (!hasTemp1 && !hasTemp2)) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
@@ -43,20 +46,22 @@ export async function POST(req: NextRequest) {
     // 1. Create telemetry log entry
     await TelemetryLog.create({
       deviceId,
-      temperature,
-      ...(typeof temperature2 === 'number' ? { temperature2 } : {}),
-      ...(typeof batteryVoltage === 'number' ? { batteryVoltage } : {}),
-      ...(typeof batteryPercentage === 'number' ? { batteryPercentage } : {}),
+      ...(hasTemp1 ? { temperature } : {}),
+      ...(hasTemp2 ? { temperature2 } : {}),
+      ...(typeof batteryVoltage === 'number' && !Number.isNaN(batteryVoltage) ? { batteryVoltage } : {}),
+      ...(typeof batteryPercentage === 'number' && !Number.isNaN(batteryPercentage) ? { batteryPercentage } : {}),
       timestamp: new Date()
     });
 
-    // 2. Update device's last seen time, status, and battery info
+    // 2. Update device's last seen time, status, temperatures, and battery info
     device.lastSeen = new Date();
     device.isOnline = true;
-    if (typeof batteryVoltage === 'number') {
+    device.lastTemp = hasTemp1 ? temperature : undefined;
+    device.lastTemp2 = hasTemp2 ? temperature2 : undefined;
+    if (typeof batteryVoltage === 'number' && !Number.isNaN(batteryVoltage)) {
       device.batteryVoltage = batteryVoltage;
     }
-    if (typeof batteryPercentage === 'number') {
+    if (typeof batteryPercentage === 'number' && !Number.isNaN(batteryPercentage)) {
       device.batteryPercentage = batteryPercentage;
     }
     await device.save();

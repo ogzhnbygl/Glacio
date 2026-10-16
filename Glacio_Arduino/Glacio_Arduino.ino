@@ -15,7 +15,7 @@ char api_key[128]    = "glacio-super-secret-key-2026";
 char api_url[128]    = "https://glacio.vercel.app/api/telemetry";
 char temp_offset[16]  = "0.0";
 char temp_offset2[16] = "0.0";
-char bat_ratio[16]    = "0.00440"; // R1=100k, R2=100k kalibrasyon katsayısı
+char bat_ratio[16]    = "0.006986"; // 3.926V / 562 ADC kalibrasyon katsayısı
 
 bool shouldSaveConfig = false;
 
@@ -28,6 +28,57 @@ const int resetBtnPin  = 0;  // FLASH Butonu (GPIO 0) - Ayarları sıfırlayıp 
 // DS18B20 Sensör Nesneleri
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
+
+// Telnet Sunucusu (Wi-Fi Uzerinden Seri Monitor - Port 23)
+WiFiServer telnetServer(23);
+WiFiClient telnetClient;
+
+void handleTelnet() {
+  if (telnetServer.hasClient()) {
+    if (!telnetClient || !telnetClient.connected()) {
+      if (telnetClient) telnetClient.stop();
+      telnetClient = telnetServer.available();
+      telnetClient.println("\r\n==========================================");
+      telnetClient.println("    Glacio Node - Canli Telnet Konsolu    ");
+      telnetClient.println("==========================================\r\n");
+    } else {
+      WiFiClient rejectClient = telnetServer.available();
+      rejectClient.stop();
+    }
+  }
+  while (telnetClient && telnetClient.available()) {
+    telnetClient.read();
+  }
+}
+
+void logPrint(const String &text) {
+  Serial.print(text);
+  if (telnetClient && telnetClient.connected()) {
+    telnetClient.print(text);
+  }
+}
+
+void logPrintln(const String &text = "") {
+  Serial.println(text);
+  if (telnetClient && telnetClient.connected()) {
+    telnetClient.print(text + "\r\n");
+  }
+}
+
+void logPrintf(const char *format, ...) {
+  char buf[256];
+  va_list args;
+  va_start(args, format);
+  vsnprintf(buf, sizeof(buf), format, args);
+  va_end(args);
+  Serial.print(buf);
+  if (telnetClient && telnetClient.connected()) {
+    String s = String(buf);
+    s.replace("\r\n", "\n");
+    s.replace("\n", "\r\n");
+    telnetClient.print(s);
+  }
+}
 
 // Zamanlayıcı
 unsigned long lastPostTime = 0;
@@ -59,6 +110,10 @@ void loadConfig() {
           strcpy(temp_offset, json["temp_offset"] | temp_offset);
           strcpy(temp_offset2, json["temp_offset2"] | temp_offset2);
           strcpy(bat_ratio, json["bat_ratio"] | bat_ratio);
+          // Eski düşük katsayı (0.00440) kayıtlıysa kalibre edilmiş yeni değere otomatik güncelle
+          if (atof(bat_ratio) < 0.0055) {
+            strcpy(bat_ratio, "0.006986");
+          }
           Serial.println("[FS] Kayitli ayarlar yuklendi.");
         }
       }
@@ -92,7 +147,7 @@ bool readTemperatures(float &t1, float &t2) {
   int devCount = sensors.getDeviceCount();
 
   if (devCount == 0) {
-    Serial.println("[SENSOR] Sensor bulunamadi (0 adet)! Baglantilari kontrol edin.");
+    logPrintln("[SENSOR] Sensor bulunamadi (0 adet)! Baglantilari kontrol edin.");
     t1 = -999.0;
     t2 = -999.0;
     return false;
@@ -133,7 +188,7 @@ float readBatteryVoltage() {
   }
   float rawAverage = rawTotal / 10.0;
   float ratio = atof(bat_ratio);
-  if (ratio <= 0.0) ratio = 0.00440;
+  if (ratio <= 0.0055) ratio = 0.006986;
   return rawAverage * ratio;
 }
 
@@ -167,17 +222,17 @@ void sendTelemetryData(float t1, float t2, float vBat, int batPercent) {
     payload += ",\"batteryPercentage\":" + String(batPercent);
     payload += "}";
 
-    Serial.print("[HTTP] POST: ");
-    Serial.println(payload);
+    logPrint("[HTTP] POST: ");
+    logPrintln(payload);
 
     int httpCode = http.POST(payload);
     if (httpCode > 0) {
-      Serial.printf("[HTTP] Kod: %d\n", httpCode);
+      logPrintf("[HTTP] Kod: %d\n", httpCode);
       digitalWrite(ledPin, HIGH);
       delay(80);
       digitalWrite(ledPin, LOW);
     } else {
-      Serial.printf("[HTTP] Hata: %s\n", http.errorToString(httpCode).c_str());
+      logPrintf("[HTTP] Hata: %s\n", http.errorToString(httpCode).c_str());
     }
     http.end();
   }
@@ -222,7 +277,7 @@ void setup() {
   WiFiManagerParameter custom_api_url("api_url", "Vercel API URL", api_url, 128);
   WiFiManagerParameter custom_temp_offset("temp_offset", "Kalibrasyon Ofseti 1 (°C)", temp_offset, 16);
   WiFiManagerParameter custom_temp_offset2("temp_offset2", "Kalibrasyon Ofseti 2 (°C)", temp_offset2, 16);
-  WiFiManagerParameter custom_bat_ratio("bat_ratio", "Pil Katsayisi (Orn: 0.00440)", bat_ratio, 16);
+  WiFiManagerParameter custom_bat_ratio("bat_ratio", "Pil Katsayisi (Orn: 0.006986)", bat_ratio, 16);
 
   wm.addParameter(&custom_device_id);
   wm.addParameter(&custom_api_key);
@@ -264,17 +319,37 @@ void setup() {
   // 3. OTA (Kablosuz Güncelleme) Başlatma
   ArduinoOTA.setHostname(device_id);
   ArduinoOTA.onStart([]() {
-    Serial.println("[OTA] Guncelleme basladi...");
+    Serial.println("\n[OTA] Kablosuz guncelleme basladi...");
   });
   ArduinoOTA.onEnd([]() {
-    Serial.println("\n[OTA] Tamamlandi!");
+    Serial.println("\n[OTA] Guncelleme basariyla tamamlandi! Cihaz yeniden baslatiliyor...");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("[OTA] Yukleme: %%%u\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("\n[OTA] Hata [%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Yetkilendirme Hatasi");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Baslatma Hatasi");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Baglanti Hatasi");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Veri Alma Hatasi");
+    else if (error == OTA_END_ERROR) Serial.println("Bitis Hatasi");
   });
   ArduinoOTA.begin();
+  Serial.printf("[OTA] Hazir! Ag adi (Hostname): %s\n", device_id);
+
+  // 4. Telnet Sunucusunu Baslat (Port 23)
+  telnetServer.begin();
+  telnetServer.setNoDelay(true);
+  Serial.println("[TELNET] Sunucu baslatildi! Port: 23");
 }
 
 void loop() {
   // OTA isteklerini dinle (Wi-Fi üzerinden kod atmak için)
   ArduinoOTA.handle();
+
+  // Telnet istemcilerini dinle
+  handleTelnet();
 
   // FLASH Butonu Kontrolü (D3 / GPIO 0):
   if (digitalRead(resetBtnPin) == LOW) {
@@ -284,7 +359,7 @@ void loop() {
       delay(100);
       holdCount++;
       if (holdCount > 30) { // 3 saniye doldu
-        Serial.println("\n[RESET] Kurulum moduna geciliyor, WiFi resetlendi!");
+        logPrintln("\n[RESET] Kurulum moduna geciliyor, WiFi resetlendi!");
         WiFiManager wm;
         wm.resetSettings();
         delay(1000);
@@ -313,19 +388,19 @@ void loop() {
     // 18650 Pil Ölçümü
     float vBat = readBatteryVoltage();
     int batPercent = calculateBatteryPercentage(vBat);
-    Serial.printf("[BATTERY] Voltaj: %.2f V | Pil: %%%d (Ham ADC: %d)\n", vBat, batPercent, analogRead(BATTERY_PIN));
+    logPrintf("[BATTERY] Voltaj: %.2f V | Pil: %%%d (Ham ADC: %d)\n", vBat, batPercent, analogRead(BATTERY_PIN));
 
     if (t1 != -999.0 || t2 != -999.0) {
       if (t1 != -999.0 && t2 != -999.0) {
-        Serial.printf("[SENSOR] Sensor 1: %.1f °C | Sensor 2: %.1f °C\n", t1, t2);
+        logPrintf("[SENSOR] Sensor 1: %.1f °C | Sensor 2: %.1f °C\n", t1, t2);
       } else if (t1 != -999.0) {
-        Serial.printf("[SENSOR] Sensor 1: %.1f °C (Sensor 2 yok)\n", t1);
+        logPrintf("[SENSOR] Sensor 1: %.1f °C (Sensor 2 yok)\n", t1);
       } else {
-        Serial.printf("[SENSOR] Sensor 2: %.1f °C (Sensor 1 yok)\n", t2);
+        logPrintf("[SENSOR] Sensor 2: %.1f °C (Sensor 1 yok)\n", t2);
       }
       sendTelemetryData(t1, t2, vBat, batPercent);
     } else {
-      Serial.println("[SENSOR] Sicaklik okuma hatasi! (Pil verisi gonderilmedi)");
+      logPrintln("[SENSOR] Sicaklik okuma hatasi! (Pil verisi gonderilmedi)");
     }
   }
 

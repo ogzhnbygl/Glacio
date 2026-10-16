@@ -18,7 +18,7 @@ export default function TemperatureChart({ data, minTemp, maxTemp, minTemp2, max
   const formattedData = data.map(log => ({
     time: format(new Date(log.timestamp), 'HH:mm'),
     fullTime: format(new Date(log.timestamp), 'dd MMM HH:mm', { locale: tr }),
-    temperature: log.temperature,
+    ...(log.temperature !== undefined && log.temperature !== null ? { temperature: log.temperature } : {}),
     ...(log.temperature2 !== undefined && log.temperature2 !== null ? { temperature2: log.temperature2 } : {})
   })).reverse(); 
 

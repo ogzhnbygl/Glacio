@@ -6,10 +6,11 @@ import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import Link from 'next/link';
 import { getServerSession } from "next-auth";
-import { authOptions } from "./api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Header from "@/components/Header";
 import ClaimDeviceModal from "@/components/ClaimDeviceModal";
+import AutoRefresh from "@/components/AutoRefresh";
 
 import User from "@/models/User";
 
@@ -30,7 +31,7 @@ export default async function Home() {
   const currentUser = await User.findById(userId).lean();
   const apiKey = currentUser?.apiKey || "";
   
-  const isAdmin = currentUser?.email === "admin@glacio.com";
+  const isAdmin = currentUser?.role === "admin" || (session.user as any).role === "admin";
 
   const deviceQuery = isAdmin 
     ? {} 
@@ -64,30 +65,42 @@ export default async function Home() {
     }
   }
   
-  // Fetch latest telemetry for each device
-  const devicesWithTemp = await Promise.all(devices.map(async (device: any) => {
-    const latestLog = await TelemetryLog.findOne({ deviceId: device.deviceId })
-      .sort({ timestamp: -1 })
-      .lean();
-      
+  // Fetch latest telemetry for all devices in a single query (eliminates N+1 queries)
+  const deviceIds = devices.map((d: any) => d.deviceId);
+  const latestLogs = deviceIds.length > 0
+    ? await TelemetryLog.aggregate([
+        { $match: { deviceId: { $in: deviceIds } } },
+        { $sort: { timestamp: -1 } },
+        { $group: { _id: "$deviceId", latestLog: { $first: "$$ROOT" } } },
+      ])
+    : [];
+  const latestLogMap = new Map<string, any>(
+    latestLogs.map((item: any) => [item._id, item.latestLog])
+  );
+
+  const devicesWithTemp = devices.map((device: any) => {
+    const latestLog = latestLogMap.get(device.deviceId);
+    const hasTelemetry = Boolean(latestLog) || device.lastTemp !== undefined || device.lastTemp2 !== undefined;
+
     // Determine if device is considered online (last seen within 5 minutes AND has at least one log)
-    const isOnline = latestLog 
-      ? new Date().getTime() - new Date(device.lastSeen).getTime() < 5 * 60 * 1000 
+    const isOnline = hasTelemetry
+      ? new Date().getTime() - new Date(device.lastSeen).getTime() < 5 * 60 * 1000
       : false;
-    
-      return {
-        ...device,
-        _id: device._id.toString(),
-        currentTemp: latestLog ? latestLog.temperature : null,
-        currentTemp2: latestLog ? latestLog.temperature2 : null,
-        batteryVoltage: latestLog?.batteryVoltage ?? device.batteryVoltage ?? null,
-        batteryPercentage: latestLog?.batteryPercentage ?? device.batteryPercentage ?? null,
-        isActuallyOnline: isOnline
-      };
-  }));
+
+    return {
+      ...device,
+      _id: device._id.toString(),
+      currentTemp: latestLog?.temperature ?? device.lastTemp ?? null,
+      currentTemp2: latestLog?.temperature2 ?? device.lastTemp2 ?? null,
+      batteryVoltage: latestLog?.batteryVoltage ?? device.batteryVoltage ?? null,
+      batteryPercentage: latestLog?.batteryPercentage ?? device.batteryPercentage ?? null,
+      isActuallyOnline: isOnline,
+    };
+  });
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-cyan-500/30">
+      <AutoRefresh intervalMs={15000} />
       <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))] opacity-5 pointer-events-none"></div>
       
       <Header 
@@ -119,7 +132,7 @@ export default async function Home() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {devicesWithTemp.map((device) => {
-            const hasTemp = device.currentTemp !== null;
+            const hasTemp = device.currentTemp !== null && device.currentTemp !== undefined;
             const hasTemp2 = device.currentTemp2 !== null && device.currentTemp2 !== undefined;
             const isDual = device.cabinetType === 'dual_plus4_minus20';
 

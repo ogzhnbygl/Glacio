@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "../../auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import dbConnect from "@/lib/mongodb";
 import Device from "@/models/Device";
 
@@ -12,14 +12,15 @@ export async function POST(req: Request) {
     }
 
     const { claimSecret } = await req.json();
+    const normalizedSecret = typeof claimSecret === "string" ? claimSecret.trim().toUpperCase() : "";
 
-    if (!claimSecret) {
+    if (!normalizedSecret) {
       return NextResponse.json({ error: "Lütfen bir şifre girin." }, { status: 400 });
     }
 
     await dbConnect();
 
-    const device = await Device.findOne({ claimSecret });
+    const device = await Device.findOne({ claimSecret: normalizedSecret });
 
     if (!device) {
       return NextResponse.json({ error: "Bu şifreye ait cihaz bulunamadı. Şifreyi kontrol edin." }, { status: 404 });

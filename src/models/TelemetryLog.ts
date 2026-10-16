@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 export interface ITelemetryLog extends mongoose.Document {
   deviceId: string;
-  temperature: number;
+  temperature?: number;
   temperature2?: number;
   batteryVoltage?: number;
   batteryPercentage?: number;
@@ -11,7 +11,7 @@ export interface ITelemetryLog extends mongoose.Document {
 
 const TelemetryLogSchema = new mongoose.Schema<ITelemetryLog>({
   deviceId: { type: String, required: true },
-  temperature: { type: Number, required: true },
+  temperature: { type: Number },
   temperature2: { type: Number },
   batteryVoltage: { type: Number },
   batteryPercentage: { type: Number },

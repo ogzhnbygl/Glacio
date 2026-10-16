@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "../../auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 import dbConnect from "@/lib/mongodb";
 import Device from "@/models/Device";
 
@@ -31,11 +31,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ de
       return NextResponse.json({ error: "Bu cihazı düzenleme yetkiniz yok." }, { status: 403 });
     }
 
-    if (name) device.name = name;
-    if (minTemp !== undefined) device.minTemp = minTemp;
-    if (maxTemp !== undefined) device.maxTemp = maxTemp;
-    if (minTemp2 !== undefined) device.minTemp2 = minTemp2;
-    if (maxTemp2 !== undefined) device.maxTemp2 = maxTemp2;
+    if (typeof name === "string" && name.trim()) device.name = name.trim();
+    if (typeof minTemp === "number" && !Number.isNaN(minTemp)) device.minTemp = minTemp;
+    if (typeof maxTemp === "number" && !Number.isNaN(maxTemp)) device.maxTemp = maxTemp;
+    if (typeof minTemp2 === "number" && !Number.isNaN(minTemp2)) device.minTemp2 = minTemp2;
+    if (typeof maxTemp2 === "number" && !Number.isNaN(maxTemp2)) device.maxTemp2 = maxTemp2;
     if (cabinetType) device.cabinetType = cabinetType;
 
     await device.save();

@@ -9,7 +9,8 @@ import { formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
 import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
+import AutoRefresh from "@/components/AutoRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
   }
   
   const userId = (session.user as any).id;
-  const isAdmin = session.user?.email === "admin@glacio.com";
+  const isAdmin = (session.user as any).role === "admin";
   const isOwner = device.ownerId?.toString() === userId;
   const isSharedWith = device.sharedWith?.some((id: any) => id.toString() === userId);
   
@@ -47,11 +48,13 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
     .limit(100)
     .lean();
     
-  const currentTemp = logs.length > 0 ? logs[0].temperature : null;
-  const currentTemp2 = logs.length > 0 ? logs[0].temperature2 : null;
+  const currentTemp = logs.length > 0 ? (logs[0].temperature ?? device.lastTemp ?? null) : (device.lastTemp ?? null);
+  const currentTemp2 = logs.length > 0 ? (logs[0].temperature2 ?? device.lastTemp2 ?? null) : (device.lastTemp2 ?? null);
   const currentBatteryVoltage = logs.length > 0 && typeof logs[0].batteryVoltage === 'number' ? logs[0].batteryVoltage : (device.batteryVoltage ?? null);
   const currentBatteryPercentage = logs.length > 0 && typeof logs[0].batteryPercentage === 'number' ? logs[0].batteryPercentage : (device.batteryPercentage ?? null);
-  const isOnline = logs.length > 0 ? new Date().getTime() - new Date(device.lastSeen).getTime() < 5 * 60 * 1000 : false;
+  const isOnline = (logs.length > 0 || device.lastTemp !== undefined || device.lastTemp2 !== undefined)
+    ? new Date().getTime() - new Date(device.lastSeen).getTime() < 5 * 60 * 1000
+    : false;
   
   const isDual = device.cabinetType === 'dual_plus4_minus20';
   
@@ -61,6 +64,7 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-cyan-500/30 pb-20">
+      <AutoRefresh intervalMs={15000} />
       <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))] opacity-5 pointer-events-none"></div>
       
       <main className="max-w-7xl mx-auto px-6 py-8 relative z-10">
@@ -252,7 +256,7 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
           
           {logs.length > 0 ? (
              <TemperatureChart 
-                data={logs} 
+                data={JSON.parse(JSON.stringify(logs))} 
                 minTemp={device.minTemp} 
                 maxTemp={device.maxTemp} 
                 minTemp2={device.minTemp2}

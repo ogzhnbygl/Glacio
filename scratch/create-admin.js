@@ -20,9 +20,9 @@ const User = mongoose.models.User || mongoose.model('User', userSchema);
 async function createAdmin() {
   await mongoose.connect(process.env.MONGODB_URI);
   
-  const email = "admin@glacio.com";
-  const password = "glacioadmin2026";
-  const name = "Glacio Super Admin";
+  const email = process.env.ADMIN_EMAIL || "admin@glacio.com";
+  const password = process.env.ADMIN_PASSWORD || crypto.randomBytes(8).toString('hex');
+  const name = process.env.ADMIN_NAME || "Glacio Super Admin";
   
   const existingAdmin = await User.findOne({ email });
   if (existingAdmin) {
