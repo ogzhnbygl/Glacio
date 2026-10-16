@@ -1,7 +1,7 @@
 import dbConnect from "@/lib/mongodb";
 import Device from "@/models/Device";
 import TelemetryLog from "@/models/TelemetryLog";
-import { Thermometer, Activity, Clock, Server, AlertTriangle, ShieldCheck, Battery } from "lucide-react";
+import { Thermometer, Activity, Clock, Server, AlertTriangle, ShieldCheck, Battery, Wifi } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import Link from 'next/link';
@@ -94,6 +94,8 @@ export default async function Home() {
       currentTemp2: latestLog?.temperature2 ?? device.lastTemp2 ?? null,
       batteryVoltage: latestLog?.batteryVoltage ?? device.batteryVoltage ?? null,
       batteryPercentage: latestLog?.batteryPercentage ?? device.batteryPercentage ?? null,
+      rssi: latestLog?.rssi ?? device.rssi ?? null,
+      txPower: latestLog?.txPower ?? device.txPower ?? null,
       isActuallyOnline: isOnline,
     };
   });
@@ -162,6 +164,12 @@ export default async function Home() {
                   </div>
                   
                   <div className="flex items-center gap-2">
+                    {device.rssi !== null && device.rssi !== undefined && (
+                      <div className="px-2 py-0.5 rounded-full text-xs font-medium border bg-cyan-500/10 text-cyan-400 border-cyan-500/20 flex items-center gap-1" title={`Wi-Fi Sinyal: ${device.rssi} dBm${device.txPower !== null && device.txPower !== undefined ? ` | Anten Gucu: ${device.txPower.toFixed(1)} dBm` : ''}`}>
+                        <Wifi className="w-3.5 h-3.5" />
+                        <span>{device.rssi} dBm</span>
+                      </div>
+                    )}
                     {device.batteryPercentage !== null && device.batteryPercentage !== undefined && (
                       <div className={`px-2 py-0.5 rounded-full text-xs font-medium border flex items-center gap-1 ${
                         device.batteryPercentage > 50 
@@ -250,6 +258,12 @@ export default async function Home() {
                       <div className="text-slate-500 text-xs mt-1 flex items-center gap-1">
                         <Battery className="w-3 h-3 text-cyan-400" />
                         <span>{device.batteryVoltage.toFixed(2)} V</span>
+                      </div>
+                    )}
+                    {device.txPower !== null && device.txPower !== undefined && (
+                      <div className="text-slate-500 text-xs mt-1 flex items-center gap-1" title="Otomatik Ayarlanan Anten Verici Gucu">
+                        <Wifi className="w-3 h-3 text-cyan-400" />
+                        <span>Anten: {device.txPower.toFixed(1)} dBm</span>
                       </div>
                     )}
                   </div>

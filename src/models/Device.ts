@@ -13,6 +13,8 @@ export interface IDevice extends mongoose.Document {
   lastTemp2?: number;
   batteryVoltage?: number;
   batteryPercentage?: number;
+  rssi?: number;
+  txPower?: number;
   ownerId?: mongoose.Types.ObjectId;
   sharedWith: mongoose.Types.ObjectId[];
   claimSecret: string;
@@ -34,6 +36,8 @@ const DeviceSchema = new mongoose.Schema<IDevice>({
   lastTemp2: { type: Number },
   batteryVoltage: { type: Number },
   batteryPercentage: { type: Number },
+  rssi: { type: Number },
+  txPower: { type: Number },
   ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   sharedWith: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   claimSecret: { type: String, required: true },

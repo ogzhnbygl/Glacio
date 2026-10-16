@@ -2,7 +2,7 @@ import dbConnect from "@/lib/mongodb";
 import Device from "@/models/Device";
 import TelemetryLog from "@/models/TelemetryLog";
 import TemperatureChart from "@/components/TemperatureChart";
-import { ArrowLeft, Thermometer, Clock, Activity, AlertTriangle, Battery } from "lucide-react";
+import { ArrowLeft, Thermometer, Clock, Activity, AlertTriangle, Battery, Wifi } from "lucide-react";
 import Link from "next/link";
 import DeviceSettingsModal from "@/components/DeviceSettingsModal";
 import { formatDistanceToNow } from "date-fns";
@@ -84,6 +84,8 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
   const currentTemp2 = logs.length > 0 ? (logs[0].temperature2 ?? device.lastTemp2 ?? null) : (device.lastTemp2 ?? null);
   const currentBatteryVoltage = logs.length > 0 && typeof logs[0].batteryVoltage === 'number' ? logs[0].batteryVoltage : (device.batteryVoltage ?? null);
   const currentBatteryPercentage = logs.length > 0 && typeof logs[0].batteryPercentage === 'number' ? logs[0].batteryPercentage : (device.batteryPercentage ?? null);
+  const currentRssi = logs.length > 0 && typeof logs[0].rssi === 'number' ? logs[0].rssi : (device.rssi ?? null);
+  const currentTxPower = logs.length > 0 && typeof logs[0].txPower === 'number' ? logs[0].txPower : (device.txPower ?? null);
   const isOnline = (logs.length > 0 || device.lastTemp !== undefined || device.lastTemp2 !== undefined)
     ? new Date().getTime() - new Date(device.lastSeen).getTime() < 5 * 60 * 1000
     : false;
@@ -114,6 +116,17 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
                 {device.name}
               </h1>
               <div className="flex items-center gap-2">
+                {currentRssi !== null && currentRssi !== undefined && (
+                  <div className="px-2.5 py-1 rounded-full text-xs font-medium border bg-cyan-500/10 text-cyan-400 border-cyan-500/20 flex items-center gap-1.5" title="Wi-Fi Sinyal ve Anten Verici Gucu">
+                    <Wifi className="w-3.5 h-3.5" />
+                    <span>{currentRssi} dBm</span>
+                    {currentTxPower !== null && currentTxPower !== undefined && (
+                      <span className="text-cyan-200/70 border-l border-cyan-500/30 pl-1.5 font-mono text-[11px]">
+                        {currentTxPower.toFixed(1)} dBm guc
+                      </span>
+                    )}
+                  </div>
+                )}
                 {currentBatteryPercentage !== null && (
                   <BatteryChartModal
                     data={serializedBatteryLogs}
@@ -198,6 +211,22 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
                   currentVoltage={currentBatteryVoltage}
                   variant="row"
                 />
+              )}
+              {currentRssi !== null && currentRssi !== undefined && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400 text-sm flex items-center gap-1.5">
+                    <Wifi className="w-3.5 h-3.5 text-cyan-500" />
+                    Wi-Fi / Anten Gucu
+                  </span>
+                  <span className="text-white text-sm font-medium flex items-center gap-1.5 font-mono">
+                    <span>{currentRssi} dBm</span>
+                    {currentTxPower !== null && currentTxPower !== undefined && (
+                      <span className="text-slate-400 text-xs font-normal">
+                        (Anten: {currentTxPower.toFixed(1)} dBm)
+                      </span>
+                    )}
+                  </span>
+                </div>
               )}
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-sm">Kayıt Tarihi</span>
