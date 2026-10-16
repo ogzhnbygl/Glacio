@@ -11,6 +11,7 @@ import { notFound, redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import AutoRefresh from "@/components/AutoRefresh";
+import BatteryChartModal from "@/components/BatteryChartModal";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,37 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
     .sort({ timestamp: -1 })
     .limit(100)
     .lean();
+
+  // Fetch last 24 hours of battery logs for the daily battery pop-up chart
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const rawDayBatteryLogs = await TelemetryLog.find(
+    {
+      deviceId,
+      timestamp: { $gte: twentyFourHoursAgo },
+      batteryPercentage: { $ne: null },
+    },
+    { batteryPercentage: 1, batteryVoltage: 1, timestamp: 1, _id: 0 }
+  )
+    .sort({ timestamp: 1 })
+    .lean();
+
+  const sourceBatteryLogs =
+    rawDayBatteryLogs.length > 0
+      ? rawDayBatteryLogs
+      : [...logs]
+          .reverse()
+          .filter((l: any) => typeof l.batteryPercentage === "number")
+          .map((l: any) => ({
+            timestamp: l.timestamp,
+            batteryPercentage: l.batteryPercentage,
+            batteryVoltage: l.batteryVoltage,
+          }));
+
+  const maxPoints = 96;
+  const step = Math.max(1, Math.floor(sourceBatteryLogs.length / maxPoints));
+  const batteryLogs = sourceBatteryLogs.filter(
+    (_: any, idx: number) => idx % step === 0 || idx === sourceBatteryLogs.length - 1
+  );
     
   const currentTemp = logs.length > 0 ? (logs[0].temperature ?? device.lastTemp ?? null) : (device.lastTemp ?? null);
   const currentTemp2 = logs.length > 0 ? (logs[0].temperature2 ?? device.lastTemp2 ?? null) : (device.lastTemp2 ?? null);
@@ -61,6 +93,8 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
   const isDanger1 = currentTemp !== null && (currentTemp < device.minTemp || currentTemp > device.maxTemp);
   const isDanger2 = isDual && currentTemp2 !== null && device.minTemp2 !== undefined && device.maxTemp2 !== undefined && (currentTemp2 < device.minTemp2 || currentTemp2 > device.maxTemp2);
   const isDanger = isDanger1 || isDanger2;
+
+  const serializedBatteryLogs = JSON.parse(JSON.stringify(batteryLogs));
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-cyan-500/30 pb-20">
@@ -81,19 +115,12 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
               </h1>
               <div className="flex items-center gap-2">
                 {currentBatteryPercentage !== null && (
-                  <div className={`px-2.5 py-1 rounded-full text-xs font-medium border flex items-center gap-1.5 ${
-                    currentBatteryPercentage > 50 
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                      : currentBatteryPercentage > 20
-                      ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                      : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                  }`} title={currentBatteryVoltage !== null ? `${currentBatteryVoltage.toFixed(2)} V` : undefined}>
-                    <Battery className="w-3.5 h-3.5" />
-                    <span>%{currentBatteryPercentage}</span>
-                    {currentBatteryVoltage !== null && (
-                      <span className="opacity-75 font-mono">({currentBatteryVoltage.toFixed(2)}V)</span>
-                    )}
-                  </div>
+                  <BatteryChartModal
+                    data={serializedBatteryLogs}
+                    currentPercentage={currentBatteryPercentage}
+                    currentVoltage={currentBatteryVoltage}
+                    variant="badge"
+                  />
                 )}
                 <div className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
                   isOnline ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'
@@ -165,24 +192,12 @@ export default async function DeviceDetail({ params }: { params: Promise<{ devic
                 </span>
               </div>
               {currentBatteryPercentage !== null && (
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400 text-sm flex items-center gap-1.5">
-                    <Battery className="w-4 h-4 text-cyan-500" />
-                    Pil Seviyesi
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${
-                      currentBatteryPercentage > 50 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                      currentBatteryPercentage > 20 ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
-                      'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                    }`}>
-                      %{currentBatteryPercentage}
-                    </span>
-                    {currentBatteryVoltage !== null && (
-                      <span className="text-slate-400 text-xs font-mono">{currentBatteryVoltage.toFixed(2)} V</span>
-                    )}
-                  </div>
-                </div>
+                <BatteryChartModal
+                  data={serializedBatteryLogs}
+                  currentPercentage={currentBatteryPercentage}
+                  currentVoltage={currentBatteryVoltage}
+                  variant="row"
+                />
               )}
               <div className="flex justify-between items-center">
                 <span className="text-slate-400 text-sm">Kayıt Tarihi</span>
